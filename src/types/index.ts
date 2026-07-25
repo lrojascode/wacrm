@@ -1,4 +1,5 @@
 import type { AccountRole } from "@/lib/auth/roles";
+import type { ContactSource } from "@/lib/attribution/sources";
 import type { InteractiveMessagePayload } from "@/lib/whatsapp/interactive";
 
 export type {
@@ -110,6 +111,16 @@ export interface Contact {
   avatar_url?: string;
   created_at: string;
   updated_at: string;
+  /** Where this lead came from — first touch, never overwritten once
+   *  set (migration 037). See src/lib/attribution/sources.ts. */
+  source?: ContactSource;
+  /** Meta ad id from the Click-to-WhatsApp referral, when applicable. */
+  source_ad_id?: string | null;
+  /** Filled in by the ads sync once the ad is mapped to its campaign. */
+  source_campaign_id?: string | null;
+  /** Raw referral / tracked-link payload (ad headline, urls, utms). */
+  source_meta?: Record<string, string> | null;
+  source_captured_at?: string | null;
   /** Hydrated by queries that embed `contact_tags(tags(*))` (e.g. the
    *  Inbox conversation list, for tag filtering). Absent otherwise. */
   tags?: Tag[];
@@ -184,10 +195,10 @@ export interface Conversation {
 }
 
 // ============================================================
-// Notifications (migration 027)
+// Notifications (migration 027, deal_assigned added in 041)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned';
+export type NotificationType = 'conversation_assigned' | 'deal_assigned';
 
 export interface Notification {
   id: string;
@@ -371,6 +382,10 @@ export interface Deal {
   notes?: string;
   expected_close_date?: string;
   status?: DealStatus;
+  /** Set exactly once, when marked won/lost; null again if reopened.
+   *  See migration 039 — the accurate close date for ROI/reporting,
+   *  unlike updated_at which moves on every unrelated edit. */
+  closed_at?: string | null;
   created_at: string;
   updated_at?: string;
   contact?: Contact;
@@ -451,6 +466,7 @@ export type AutomationStepType =
   | 'assign_conversation'
   | 'update_contact_field'
   | 'create_deal'
+  | 'assign_deal'
   | 'wait'
   | 'condition'
   | 'send_webhook'
@@ -532,6 +548,15 @@ export interface CreateDealStepConfig {
   stage_id: string;
   title: string;
   value?: number;
+  /** Optional — omitted (pre-Phase-4 configs) leaves the deal unassigned. */
+  assignment?: { mode: 'specific' | 'round_robin'; assignee_id?: string };
+}
+
+/** Reassigns whichever open deals belong to the automation's triggering
+ *  contact — mirrors AssignConversationStepConfig's shape. */
+export interface AssignDealStepConfig {
+  mode: 'specific' | 'round_robin';
+  assignee_id?: string;
 }
 
 export interface WaitStepConfig {
@@ -568,6 +593,7 @@ export type AutomationStepConfig =
   | AssignConversationStepConfig
   | UpdateContactFieldStepConfig
   | CreateDealStepConfig
+  | AssignDealStepConfig
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig
