@@ -29,7 +29,9 @@ import {
   PanelRightClose,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
-import { useTranslations } from "next-intl";
+import type { Locale } from "date-fns/locale";
+import { useLocale, useTranslations } from "next-intl";
+import { dateFnsLocale } from "@/lib/i18n/date-locale";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -111,11 +113,18 @@ interface MessageThreadProps {
   onToggleContactPanel?: () => void;
 }
 
-function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
+function formatDateSeparator(
+  dateStr: string,
+  t: ReturnType<typeof useTranslations>,
+  locale: Locale,
+): string {
   const date = new Date(dateStr);
   if (isToday(date)) return t("today");
   if (isYesterday(date)) return t("yesterday");
-  return format(date, "MMMM d, yyyy");
+  // `PPP` is the localized long-date token: "10 de agosto de 2026" in
+  // Spanish, "August 10th, 2026" in English. A literal "MMMM d, yyyy"
+  // is English word order no matter which locale is active.
+  return format(date, "PPP", { locale });
 }
 
 function groupMessagesByDate(messages: Message[]) {
@@ -169,6 +178,7 @@ export function MessageThread({
   onToggleContactPanel,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
+  const dateLocale = dateFnsLocale(useLocale());
   const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
 
@@ -1077,7 +1087,7 @@ export function MessageThread({
                 {/* Date separator */}
                 <div className="mb-4 flex items-center justify-center">
                   <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium text-muted-foreground">
-                    {formatDateSeparator(group.date, t)}
+                    {formatDateSeparator(group.date, t, dateLocale)}
                   </span>
                 </div>
                 {/* Messages */}

@@ -14,6 +14,82 @@
     "noAccount": "¿No tienes una cuenta?",
     "createAccount": "Crear cuenta"
   },
+  "ForgotPasswordPage": {
+    "title": "Restablecer contraseña",
+    "description": "Ingresa tu correo y te enviaremos un enlace para restablecerla",
+    "emailLabel": "Correo electrónico",
+    "emailPlaceholder": "tu@ejemplo.com",
+    "sending": "Enviando...",
+    "sendLink": "Enviar enlace",
+    "backToSignIn": "Volver a iniciar sesión",
+    "sentTitle": "Revisa tu correo",
+    "sentDesc": "Enviamos un enlace para restablecer tu contraseña a <bold>{email}</bold>. Revisa tu bandeja de entrada."
+  },
+  "SignupPage": {
+    "title": "Crear cuenta",
+    "titleJoin": "Crear cuenta y unirte",
+    "description": "Empieza a usar tu CRM para WhatsApp",
+    "descriptionJoin": "Verifica tu correo y luego acepta la invitación para unirte a tu equipo.",
+    "fullNameLabel": "Nombre completo",
+    "fullNamePlaceholder": "Juan Pérez",
+    "emailLabel": "Correo electrónico",
+    "emailPlaceholder": "tu@ejemplo.com",
+    "passwordLabel": "Contraseña",
+    "passwordPlaceholder": "Al menos 6 caracteres",
+    "confirmPasswordLabel": "Confirmar contraseña",
+    "confirmPasswordPlaceholder": "Repite tu contraseña",
+    "creatingAccount": "Creando cuenta...",
+    "createAccount": "Crear cuenta",
+    "haveAccount": "¿Ya tienes una cuenta?",
+    "signIn": "Iniciar sesión",
+    "sentTitle": "Revisa tu correo",
+    "sentDesc": "Enviamos un enlace de confirmación a <bold>{email}</bold>. Revisa tu bandeja de entrada y haz clic en el enlace para verificar tu cuenta.",
+    "backToSignIn": "Volver a iniciar sesión",
+    "errorPasswordMismatch": "Las contraseñas no coinciden",
+    "errorPasswordShort": "La contraseña debe tener al menos 6 caracteres"
+  },
+  "JoinPage": {
+    "verifying": "Verificando invitación…",
+    "fail": {
+      "not_found": {
+        "title": "Invitación no encontrada",
+        "body": "Este enlace no corresponde a una invitación válida. Revisa la dirección o pide a quien te invitó que te envíe una nueva."
+      },
+      "used": {
+        "title": "Invitación ya usada",
+        "body": "Esta invitación ya fue aceptada. Si no fuiste tú, pide al administrador de la cuenta que te envíe un enlace nuevo."
+      },
+      "expired": {
+        "title": "Invitación vencida",
+        "body": "Esta invitación ya venció. Pide al administrador de la cuenta que te envíe una nueva — se generan en segundos."
+      },
+      "server_error": {
+        "title": "Algo salió mal",
+        "body": "No pudimos verificar esta invitación en este momento. Prueba recargando la página en un momento."
+      }
+    },
+    "tryAgain": "Intentar de nuevo",
+    "createAccountInstead": "Crear una cuenta nueva",
+    "signIn": "Iniciar sesión",
+    "invitedTo": "Te invitaron a <account>{name}</account>",
+    "joinAs": "Te unirás como",
+    "linkValidUntil": "Enlace válido hasta {date}.",
+    "accepting": "Aceptando…",
+    "acceptInvitation": "Aceptar invitación",
+    "acceptNote": "Al aceptar, tu sesión pasa a <account>{name}</account>. Tu cuenta personal vacía del registro se eliminará.",
+    "conflictTitle": "No puedes unirte a {name} con esta cuenta",
+    "conflictBody": "Para unirte a <account>{name}</account>, cierra sesión y regístrate con otro correo. El enlace sigue siendo válido mientras no venza.",
+    "conflictFallback": "Ya perteneces a otra cuenta. Inicia sesión con otro correo para unirte a esta.",
+    "staySignedIn": "Seguir con esta sesión",
+    "signOutDifferentEmail": "Cerrar sesión y usar otro correo",
+    "signingOut": "Cerrando sesión…",
+    "createAccountJoin": "Crear cuenta y unirme",
+    "haveAccount": "Ya tengo una cuenta",
+    "toastWelcome": "Bienvenido al equipo",
+    "toastAcceptFailed": "No se pudo aceptar la invitación",
+    "toastNoServer": "No se pudo conectar con el servidor",
+    "toastSignOutFailed": "No se pudo cerrar sesión. Prueba recargando la página."
+  },
   "Sidebar": {
     "title": "Plantilla CRM para WhatsApp",
     "dashboard": "Panel",
@@ -126,6 +202,17 @@
     "emptyState": {
       "title": "Aún no hay datos suficientes"
     }
+  },
+  "Notifications": {
+    "title": "Notificaciones",
+    "subtitle": "Aquí aparecen las conversaciones que otros compañeros te asignan.",
+    "markAllRead": "Marcar todas como leídas",
+    "retry": "Reintentar",
+    "emptyTitle": "Aún no hay notificaciones",
+    "emptyHint": "Verás un aviso aquí cuando alguien te asigne una conversación.",
+    "unread": "No leída",
+    "toastMarkReadFailed": "No se pudo marcar la notificación como leída",
+    "toastMarkAllFailed": "No se pudieron marcar todas como leídas"
   },
   "Inbox": {
     "page": {
@@ -631,6 +718,9 @@
       "noAdAccountHint": "Pide a un administrador que conecte una cuenta publicitaria en Configuración.",
       "noCampaignsTitle": "Aún no hay campañas",
       "noCampaignsHint": "Nada sincronizado para este rango todavía. Prueba Sincronizar ahora, o un rango más amplio.",
+      "allPausedHint": "Todas las campañas de este rango están pausadas. Usa «Ver pausadas» para mostrarlas.",
+      "showPaused": "Ver pausadas ({count})",
+      "hidePaused": "Ocultar pausadas",
       "columns": {
         "campaign": "Campaña",
         "status": "Estado",

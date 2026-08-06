@@ -66,7 +66,7 @@ import { useTranslations } from 'next-intl';
 import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import { usePresence } from '@/hooks/use-presence';
-import type { AccountRole } from '@/lib/auth/roles';
+import { ASSIGNABLE_ROLES, type AccountRole } from '@/lib/auth/roles';
 import { presenceLabel, summarize } from '@/lib/presence';
 import {
   PRESENCE_DOT_CLASS,
@@ -93,12 +93,21 @@ interface Invitation {
   expires_at: string;
 }
 
-// These roles are translated via `useTranslations("Settings.roles")` where they are used.
-const EDITABLE_ROLES: { value: AccountRole }[] = [
-  { value: 'admin' },
-  { value: 'agent' },
-  { value: 'viewer' },
-];
+/**
+ * Role options for one member's dropdown. Translated via
+ * `useTranslations("Settings.roles")` at the call site.
+ *
+ * Normally just `ASSIGNABLE_ROLES` (viewer is hidden from the pickers
+ * — see roles.ts). The member's *current* role is folded back in so a
+ * pre-existing viewer doesn't render an empty Select: Base UI has no
+ * item matching the value, so `<SelectValue />` would show blank and
+ * the row would look broken.
+ */
+function roleOptionsFor(current: AccountRole): AccountRole[] {
+  return ASSIGNABLE_ROLES.includes(current)
+    ? [...ASSIGNABLE_ROLES]
+    : [current, ...ASSIGNABLE_ROLES];
+}
 
 // Per-role chip metadata (icon / label / colour) lives in the shared
 // ROLE_META module so this roster and the Overview identity chip can't
@@ -431,9 +440,9 @@ export function MembersTab() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {EDITABLE_ROLES.map((r) => (
-                            <SelectItem key={r.value} value={r.value}>
-                              {tRoles(r.value)}
+                          {roleOptionsFor(member.role).map((r) => (
+                            <SelectItem key={r} value={r}>
+                              {tRoles(r)}
                             </SelectItem>
                           ))}
                         </SelectContent>

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
-import { Megaphone, RefreshCw, Loader2 } from 'lucide-react'
+import { Megaphone, RefreshCw, Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { createClient } from '@/lib/supabase/client'
@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { formatCurrency } from '@/lib/currency'
 import { daysAgoStart } from '@/lib/dashboard/date-utils'
 import { loadCampaigns, type CampaignRow } from '@/lib/ads/queries'
+import { countPausedCampaigns, visibleCampaigns } from '@/lib/ads/campaign-visibility'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -40,6 +41,7 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [showPaused, setShowPaused] = useState(false)
 
   const fetchCampaigns = useCallback(async () => {
     setLoading(true)
@@ -62,6 +64,12 @@ export default function CampaignsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchCampaigns()
   }, [fetchCampaigns])
+
+  // See campaign-visibility.ts for why paused rows are filtered here
+  // rather than in the query, and why the check is an equality against
+  // 'PAUSED'.
+  const pausedCount = countPausedCampaigns(campaigns)
+  const visibleRows = visibleCampaigns(campaigns, showPaused)
 
   async function handleSyncNow() {
     setSyncing(true)
@@ -110,6 +118,22 @@ export default function CampaignsPage() {
               </button>
             ))}
           </div>
+          {pausedCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPaused((v) => !v)}
+              aria-pressed={showPaused}
+              className="border-border text-foreground"
+            >
+              {showPaused ? (
+                <EyeOff className="size-3.5" />
+              ) : (
+                <Eye className="size-3.5" />
+              )}
+              {showPaused ? t('hidePaused') : t('showPaused', { count: pausedCount })}
+            </Button>
+          )}
           {canEditSettings && hasAdAccounts && (
             <Button
               variant="outline"
@@ -145,8 +169,15 @@ export default function CampaignsPage() {
             title={t('noAdAccountTitle')}
             hint={canEditSettings ? t('noAdAccountHintAdmin') : t('noAdAccountHint')}
           />
-        ) : campaigns.length === 0 ? (
-          <EmptyState icon={Megaphone} title={t('noCampaignsTitle')} hint={t('noCampaignsHint')} />
+        ) : visibleRows.length === 0 ? (
+          // Distinguish "this account has no campaigns" from "every
+          // campaign in range is paused and therefore hidden" — the
+          // second one otherwise reads as data loss.
+          <EmptyState
+            icon={Megaphone}
+            title={t('noCampaignsTitle')}
+            hint={pausedCount > 0 ? t('allPausedHint') : t('noCampaignsHint')}
+          />
         ) : (
           <div className="overflow-x-auto">
             <Table>
@@ -157,15 +188,13 @@ export default function CampaignsPage() {
                   <TableHead className="text-right">{t('columns.spend')}</TableHead>
                   <TableHead className="text-right">{t('columns.leads')}</TableHead>
                   <TableHead className="text-right">{t('columns.costPerLead')}</TableHead>
-                  <TableHead className="text-right">{t('columns.revenue')}</TableHead>
-                  <TableHead className="text-right">{t('columns.dealsWon')}</TableHead>
                   <TableHead className="text-right">{t('columns.roi')}</TableHead>
                   <TableHead className="text-right">{t('columns.messagingStarted')}</TableHead>
                   <TableHead className="w-8" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {campaigns.map((c) => (
+                {visibleRows.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell>
                       <div className="font-medium text-foreground">{c.name}</div>
@@ -195,10 +224,6 @@ export default function CampaignsPage() {
                         ? t('notAvailable')
                         : formatCurrency(c.costPerLead, c.currency)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(c.revenue, c.currency)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{c.dealsWon}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {!c.roiComparable ? (
                         <span className="text-xs text-amber-500" title={t('roiCurrencyMismatch')}>

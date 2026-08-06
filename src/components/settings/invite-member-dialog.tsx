@@ -38,7 +38,12 @@ import {
 } from '@/components/ui/select';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/hooks/use-auth';
+import { ASSIGNABLE_ROLES } from '@/lib/auth/roles';
 
+// Stays a three-way union even though the picker only offers two: the
+// API still accepts `viewer`, and narrowing this type would make the
+// server contract and the client disagree. Which roles a human can
+// pick is ASSIGNABLE_ROLES' job, not the type's.
 type InviteRole = 'admin' | 'agent' | 'viewer';
 
 interface InviteMemberDialogProps {
@@ -277,9 +282,11 @@ export function InviteMemberDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">{tRoles('admin')}</SelectItem>
-                    <SelectItem value="agent">{tRoles('agent')}</SelectItem>
-                    <SelectItem value="viewer">{tRoles('viewer')}</SelectItem>
+                    {ASSIGNABLE_ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {tRoles(r)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">

@@ -14,6 +14,82 @@
     "noAccount": "Don't have an account?",
     "createAccount": "Create account"
   },
+  "ForgotPasswordPage": {
+    "title": "Reset password",
+    "description": "Enter your email and we'll send you a reset link",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "sending": "Sending...",
+    "sendLink": "Send reset link",
+    "backToSignIn": "Back to sign in",
+    "sentTitle": "Check your email",
+    "sentDesc": "We've sent a password reset link to <bold>{email}</bold>. Please check your inbox."
+  },
+  "SignupPage": {
+    "title": "Create account",
+    "titleJoin": "Create account & join",
+    "description": "Get started with your CRM for WhatsApp",
+    "descriptionJoin": "Verify your email, then accept the invitation to join your team.",
+    "fullNameLabel": "Full name",
+    "fullNamePlaceholder": "John Doe",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "At least 6 characters",
+    "confirmPasswordLabel": "Confirm password",
+    "confirmPasswordPlaceholder": "Repeat your password",
+    "creatingAccount": "Creating account...",
+    "createAccount": "Create account",
+    "haveAccount": "Already have an account?",
+    "signIn": "Sign in",
+    "sentTitle": "Check your email",
+    "sentDesc": "We've sent a confirmation link to <bold>{email}</bold>. Please check your inbox and click the link to verify your account.",
+    "backToSignIn": "Back to sign in",
+    "errorPasswordMismatch": "Passwords do not match",
+    "errorPasswordShort": "Password must be at least 6 characters"
+  },
+  "JoinPage": {
+    "verifying": "Verifying invitation…",
+    "fail": {
+      "not_found": {
+        "title": "Invite not found",
+        "body": "This link doesn't match a valid invitation. Double-check the URL or ask the person who invited you to send a new one."
+      },
+      "used": {
+        "title": "Invite already used",
+        "body": "This invitation has already been accepted. If that wasn't you, ask the account admin to send a fresh link."
+      },
+      "expired": {
+        "title": "Invite expired",
+        "body": "This invitation has expired. Ask the account admin to send a new one — they take a few seconds to generate."
+      },
+      "server_error": {
+        "title": "Something went wrong",
+        "body": "We couldn't verify this invitation right now. Try refreshing the page in a moment."
+      }
+    },
+    "tryAgain": "Try again",
+    "createAccountInstead": "Create a new account instead",
+    "signIn": "Sign in",
+    "invitedTo": "You're invited to <account>{name}</account>",
+    "joinAs": "You'll join as",
+    "linkValidUntil": "Link valid until {date}.",
+    "accepting": "Accepting…",
+    "acceptInvitation": "Accept invitation",
+    "acceptNote": "Accepting moves your login into <account>{name}</account>. Your empty personal account from signup will be cleaned up.",
+    "conflictTitle": "Can't join {name} with this account",
+    "conflictBody": "To join <account>{name}</account>, sign out and sign up again with a different email address. The invite link stays valid as long as it hasn't expired.",
+    "conflictFallback": "You are already in another account. Sign in with a different email to join this one.",
+    "staySignedIn": "Stay signed in",
+    "signOutDifferentEmail": "Sign out & use a different email",
+    "signingOut": "Signing out…",
+    "createAccountJoin": "Create account & join",
+    "haveAccount": "I already have an account",
+    "toastWelcome": "Welcome to the team",
+    "toastAcceptFailed": "Failed to accept invitation",
+    "toastNoServer": "Could not reach the server",
+    "toastSignOutFailed": "Could not sign out. Try refreshing the page."
+  },
   "Sidebar": {
     "title": "CRM Template for WhatsApp",
     "dashboard": "Dashboard",
@@ -126,6 +202,17 @@
     "emptyState": {
       "title": "Not enough data yet"
     }
+  },
+  "Notifications": {
+    "title": "Notifications",
+    "subtitle": "Conversations other teammates assign to you show up here.",
+    "markAllRead": "Mark all as read",
+    "retry": "Retry",
+    "emptyTitle": "No notifications yet",
+    "emptyHint": "You'll see an alert here when someone assigns you a conversation.",
+    "unread": "Unread",
+    "toastMarkReadFailed": "Failed to mark notification as read",
+    "toastMarkAllFailed": "Failed to mark all as read"
   },
   "Inbox": {
     "page": {
@@ -631,6 +718,9 @@
       "noAdAccountHint": "Ask an admin to connect an ad account in Settings.",
       "noCampaignsTitle": "No campaigns yet",
       "noCampaignsHint": "Nothing synced for this range yet. Try Sync now, or a wider range.",
+      "allPausedHint": "Every campaign in this range is paused. Use \"Show paused\" to display them.",
+      "showPaused": "Show paused ({count})",
+      "hidePaused": "Hide paused",
       "columns": {
         "campaign": "Campaign",
         "status": "Status",

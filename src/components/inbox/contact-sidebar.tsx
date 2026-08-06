@@ -19,7 +19,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { dateFnsLocale } from "@/lib/i18n/date-locale";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -28,6 +29,7 @@ interface ContactSidebarProps {
 export function ContactSidebar({ contact }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
+  const dateLocale = dateFnsLocale(useLocale());
 
   const { accountId } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -289,7 +291,15 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                       {note.note_text}
                     </p>
                     <p className="mt-1 text-[10px] text-muted-foreground">
-                      {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}
+                      {/* `PP` is date-fns' localized date token, so the
+                          order follows the locale — "10 de ago de 2026"
+                          rather than the English "ago 10, 2026" a
+                          literal "MMM d, yyyy" would produce. The time
+                          stays an explicit 24h HH:mm, as everywhere
+                          else in the inbox. */}
+                      {format(new Date(note.created_at), "PP HH:mm", {
+                        locale: dateLocale,
+                      })}
                     </p>
                   </div>
                 ))}
