@@ -30,5 +30,14 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    // A standalone project with its own package.json/tsconfig.json/
+    // node_modules (git-ignored, so a fresh checkout never has it) —
+    // the broad **/*.ts include above was sweeping it into the Next.js
+    // app's type-check, which fails in any environment (CI, a
+    // production Docker build) that doesn't happen to have
+    // mcp-server/node_modules already installed from unrelated work.
+    "mcp-server"
+  ]
 }
