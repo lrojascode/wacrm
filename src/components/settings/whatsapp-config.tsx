@@ -23,6 +23,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SettingsPanelHead } from './settings-panel-head';
+import { RequireRole } from '@/components/auth/require-role';
+import { MetaAppSettings } from './meta-app-settings';
 import {
   Accordion,
   AccordionItem,
@@ -682,6 +684,14 @@ export function WhatsAppConfig() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Meta App — owner only. A regular admin manages the WhatsApp
+            number day to day; only the account owner can point the
+            account at a different Meta app entirely, since that also
+            changes where inbound webhook traffic is verified from. */}
+        <RequireRole min="owner">
+          <MetaAppSettings />
+        </RequireRole>
 
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-3">
