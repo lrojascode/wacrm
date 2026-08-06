@@ -1705,7 +1705,29 @@
       "step4_3": "Pega la <strong class=\"text-foreground\">URL de callback del webhook</strong> de arriba",
       "step4_4": "Ingresa el mismo <strong class=\"text-foreground\">Token de verificación</strong> que definiste aquí",
       "step4_5": "Suscríbete al campo de webhook \"messages\"",
-      "metaDocs": "Documentación de la API de WhatsApp de Meta"
+      "metaDocs": "Documentación de la API de WhatsApp de Meta",
+      "metaApp": {
+        "title": "Aplicación de Meta",
+        "description": "Usa tu propia app de Meta en vez de la compartida en este despliegue — necesario cuando un cliente es dueño de su Business Manager y no dará acceso de administrador a la nuestra.",
+        "ownerOnly": "Solo el propietario de la cuenta puede ver y editar esta sección.",
+        "needsWhatsAppFirst": "Guarda primero tu número de WhatsApp arriba — una app de Meta propia se vincula a esa conexión.",
+        "appId": "ID de la app",
+        "appIdPlaceholder": "ej. 1234567890123456",
+        "appIdHint": "Desde Meta for Developers → Configuración de la app → Básica. Déjalo en blanco para usar el ID de app compartido de este despliegue.",
+        "appSecret": "Secreto de la app",
+        "appSecretPlaceholderSet": "Configurado — ingresa un nuevo valor para reemplazarlo",
+        "appSecretPlaceholderUnset": "Ingresa tu Secreto de la app",
+        "appSecretHint": "Desde Meta for Developers → Configuración de la app → Básica. Déjalo en blanco para usar el secreto compartido de este despliegue.",
+        "webhookUrl": "URL de callback del webhook para esta cuenta",
+        "webhookUrlHint": "Usa esta URL — no la general de arriba — como callback del webhook en el Panel de Apps de Meta de este cliente.",
+        "save": "Guardar app de Meta",
+        "saving": "Guardando...",
+        "clear": "Volver a la app compartida",
+        "clearing": "Revirtiendo...",
+        "clearConfirm": "Esto borra tu ID de app y Secreto de app, y esta cuenta vuelve a usar la app de Meta compartida del despliegue. ¿Continuar?",
+        "savedToast": "Configuración de la app de Meta guardada.",
+        "clearedToast": "Se volvió a la app de Meta compartida."
+      }
     },
     "sections": {
       "overview": "Resumen",

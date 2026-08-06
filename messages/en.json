@@ -1705,7 +1705,29 @@
       "step4_3": "Paste the <strong class=\"text-foreground\">Webhook Callback URL</strong> from above",
       "step4_4": "Enter the same <strong class=\"text-foreground\">Verify Token</strong> you set here",
       "step4_5": "Subscribe to \"messages\" webhook field",
-      "metaDocs": "Meta WhatsApp API Documentation"
+      "metaDocs": "Meta WhatsApp API Documentation",
+      "metaApp": {
+        "title": "Meta App",
+        "description": "Bring your own Meta app instead of sharing this deployment's default one — needed when a client owns their Business Manager and won't grant it admin access to ours.",
+        "ownerOnly": "Only the account owner can view and edit this section.",
+        "needsWhatsAppFirst": "Save your WhatsApp number above first — a dedicated Meta app is attached to that connection.",
+        "appId": "App ID",
+        "appIdPlaceholder": "e.g. 1234567890123456",
+        "appIdHint": "From Meta for Developers → App Settings → Basic. Leave blank to use this deployment's shared App ID.",
+        "appSecret": "App Secret",
+        "appSecretPlaceholderSet": "Configured — enter a new value to replace it",
+        "appSecretPlaceholderUnset": "Enter your App Secret",
+        "appSecretHint": "From Meta for Developers → App Settings → Basic. Leave blank to use this deployment's shared App Secret.",
+        "webhookUrl": "Webhook Callback URL for this account",
+        "webhookUrlHint": "Use this URL — not the general one above — as the webhook callback in this client's own Meta App Dashboard.",
+        "save": "Save Meta App",
+        "saving": "Saving...",
+        "clear": "Revert to shared app",
+        "clearing": "Reverting...",
+        "clearConfirm": "This clears your App ID and App Secret and reverts this account to the deployment's shared Meta app. Continue?",
+        "savedToast": "Meta app settings saved.",
+        "clearedToast": "Reverted to the shared Meta app."
+      }
     },
     "sections": {
       "overview": "Overview",

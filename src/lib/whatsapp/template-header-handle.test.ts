@@ -78,4 +78,34 @@ describe('ensureImageHeaderHandle', () => {
     vi.stubGlobal('fetch', vi.fn(async () => imgResponse('image/png', 6 * 1024 * 1024)));
     await expect(ensureImageHeaderHandle(payload(), 'tok')).rejects.toThrow(/5 MB/);
   });
+
+  it('uses the account’s own app id when given, without needing META_APP_ID set', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => imgResponse('image/jpeg', 2048)));
+    const p = payload();
+    await ensureImageHeaderHandle(p, 'tok', 'account-own-app-id');
+    expect(uploadResumableMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: 'account-own-app-id' }),
+    );
+    expect(p.header_handle).toBe('HANDLE123');
+  });
+
+  it('prefers the account’s own app id over the shared META_APP_ID', async () => {
+    vi.stubEnv('META_APP_ID', 'shared-app-id');
+    vi.stubGlobal('fetch', vi.fn(async () => imgResponse('image/jpeg', 2048)));
+    const p = payload();
+    await ensureImageHeaderHandle(p, 'tok', 'account-own-app-id');
+    expect(uploadResumableMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: 'account-own-app-id' }),
+    );
+  });
+
+  it('falls back to the shared META_APP_ID when the account has none configured (null)', async () => {
+    vi.stubEnv('META_APP_ID', 'shared-app-id');
+    vi.stubGlobal('fetch', vi.fn(async () => imgResponse('image/jpeg', 2048)));
+    const p = payload();
+    await ensureImageHeaderHandle(p, 'tok', null);
+    expect(uploadResumableMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: 'shared-app-id' }),
+    );
+  });
 });

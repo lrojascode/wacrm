@@ -12,22 +12,29 @@ import crypto from 'node:crypto'
  *   https://developers.facebook.com/docs/graph-api/webhooks/getting-started#verify-payloads
  *
  * Contract:
- *   `META_APP_SECRET` is **required**. If it's missing we fail closed —
- *   every request is rejected until the operator configures the
- *   secret. A previous version fell open with a warning log, which is
- *   unsafe for a public template: anyone who forgets the env var would
- *   be running a fully spoofable webhook.
+ *   A secret is **required**. If none is available we fail closed —
+ *   every request is rejected until the operator configures one. A
+ *   previous version fell open with a warning log, which is unsafe
+ *   for a public template: anyone who forgets the env var would be
+ *   running a fully spoofable webhook.
+ *
+ * `secret` defaults to the deployment-wide `META_APP_SECRET` env var,
+ * which is what the legacy single-app `/api/whatsapp/webhook` route
+ * uses. The per-account route (`/api/whatsapp/webhook/[token]`)
+ * passes an account's own decrypted `meta_app_secret_encrypted`
+ * instead, so a client with their own Meta app can be verified
+ * against their own secret rather than the shared one.
  */
 export function verifyMetaWebhookSignature(
   rawBody: string,
   signatureHeader: string | null,
+  secret: string | undefined = process.env.META_APP_SECRET,
 ): boolean {
-  const secret = process.env.META_APP_SECRET
   if (!secret) {
     console.error(
-      '[webhook] META_APP_SECRET is not set — rejecting request. ' +
-        'Configure the env var (Meta → App Settings → Basic → App Secret) ' +
-        'to enable signature verification.',
+      '[webhook] No app secret available — rejecting request. ' +
+        'Configure META_APP_SECRET (Meta → App Settings → Basic → App Secret), ' +
+        'or set a per-account secret in Settings, to enable signature verification.',
     )
     return false
   }

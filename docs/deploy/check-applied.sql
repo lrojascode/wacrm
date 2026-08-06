@@ -64,6 +64,14 @@ WITH checks AS (
             WHERE table_name = 'accounts' AND column_name = 'brand_name')
       AND EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'brand-assets'),
     'docs/deploy/branding.sql'
+  UNION ALL
+  SELECT
+    '044 meta app per account',
+    EXISTS (SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'whatsapp_config' AND column_name = 'webhook_token')
+      AND EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name = 'whatsapp_config' AND column_name = 'meta_app_secret_encrypted'),
+    'docs/deploy/meta-app-per-account.sql'
 )
 SELECT
   release,
