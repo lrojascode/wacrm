@@ -1,0 +1,75 @@
+name: Ads sync
+
+# Drives GET /api/ads/sync on a schedule.
+#
+# Why this exists: a WhatsApp referral only ever carries an ad id, never
+# a campaign (see src/lib/attribution/capture.ts). Turning that ad id
+# into "campaign X" — and pulling each connected account's daily spend —
+# is what /api/ads/sync does, but nothing calls it on its own. Without
+# a scheduler, ad_metrics_daily never fills in and every lead's
+# source_campaign_id stays NULL forever, so the Campaigns page looks
+# empty even though attribution capture worked at the webhook.
+#
+# The endpoint requires two things configured as repo secrets (Settings
+# → Secrets and variables → Actions):
+#   AUTOMATION_CRON_SECRET  same value as the app's env var — the route
+#                           checks it with a timing-safe comparison
+#                           (src/app/api/ads/sync/route.ts) and is
+#                           shared with /api/automations/cron, so
+#                           there's only one secret to manage.
+#   CRM_BASE_URL            the deployed origin, no trailing slash
+#                           (e.g. https://crm.agenciakibo.com).
+
+on:
+  schedule:
+    # 09:00 UTC ≈ 04:00 America/Lima. Once a day matches how the sync
+    # is documented in docs/pruebas-local.md; the resolver's own
+    # backoff (src/lib/ads/resolution-policy.ts) caps retries at 25
+    # unresolved ads per run regardless of how often this fires.
+    - cron: '0 9 * * *'
+  # Manual trigger — the fastest way to drain a resolution backlog or
+  # confirm the secret/URL are wired correctly without waiting for the
+  # schedule.
+  workflow_dispatch:
+
+concurrency:
+  group: ads-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync ad accounts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/ads/sync
+        env:
+          CRON_SECRET: ${{ secrets.AUTOMATION_CRON_SECRET }}
+          BASE_URL: ${{ secrets.CRM_BASE_URL }}
+        run: |
+          if [ -z "$CRON_SECRET" ] || [ -z "$BASE_URL" ]; then
+            echo "::error::AUTOMATION_CRON_SECRET and/or CRM_BASE_URL repo secrets are not set."
+            exit 1
+          fi
+
+          response="$(mktemp)"
+          status="$(curl -sS -o "$response" -w '%{http_code}' \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$BASE_URL/api/ads/sync")"
+
+          echo "HTTP $status"
+          cat "$response"
+
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "::error::/api/ads/sync returned HTTP $status"
+            exit 1
+          fi
+
+          # A 200 only means the run completed, not that every account
+          # synced cleanly — each ad account reports its own error (e.g.
+          # an expired token) inside `results`. Same check the Settings
+          # "Sync now" button and the Campaigns page already do.
+          failed="$(jq -r '[.results[]? | select(.error != null)] | length' "$response")"
+          if [ "$failed" != "0" ]; then
+            echo "::error::$failed ad account(s) failed to sync — see the response body above."
+            exit 1
+          fi
