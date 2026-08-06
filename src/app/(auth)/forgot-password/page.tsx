@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +16,30 @@ import {
 } from "@/components/ui/card";
 import { MessageSquare, CheckCircle, ArrowLeft } from "lucide-react";
 
+// `useSearchParams` opts the component out of static prerendering
+// unless wrapped in Suspense — same pattern as /login and /signup.
 export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ForgotPasswordPageInner />
+    </Suspense>
+  );
+}
+
+function ForgotPasswordPageInner() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  // /auth/callback sends users back here with `?error=link_invalid`
+  // when their recovery link was missing, expired, or already used —
+  // read once via the lazy initializer (not an effect: the value is
+  // fixed at mount, so setting it after the fact would just be an
+  // extra render) and it flows through the same error banner the
+  // submit handler below uses for a failed send.
+  const [error, setError] = useState<string | null>(() =>
+    searchParams.get("error") === "link_invalid"
+      ? "That link isn't valid anymore — it may have expired or already been used. Request a new one below."
+      : null,
+  );
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const supabase = createClient();
