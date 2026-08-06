@@ -26,6 +26,24 @@ export const ACCOUNT_ROLES: readonly AccountRole[] = [
 ] as const;
 
 /**
+ * The roles a human can pick in the UI when inviting a teammate or
+ * changing someone's role.
+ *
+ * Deliberately a subset of `ACCOUNT_ROLES`, not a replacement for it:
+ *   - `owner` was never assignable (ownership moves through transfer).
+ *   - `viewer` is hidden from the pickers by product decision, but the
+ *     role itself stays fully alive — the enum, `is_account_member`,
+ *     every RLS policy, and `ROLE_META` all still know it. Accounts
+ *     that already have a viewer keep working, and their row still
+ *     renders and can still be changed; the role just can't be handed
+ *     out to anyone new.
+ *
+ * Do NOT use this for authorisation checks — it is a UI affordance
+ * list. Permission questions go through the predicates below.
+ */
+export const ASSIGNABLE_ROLES: readonly AccountRole[] = ["agent", "admin"] as const;
+
+/**
  * Numeric rank of a role. Higher = more privileged. Mirrors the
  * CASE expression in `is_account_member` so JS/SQL stay aligned.
  */
