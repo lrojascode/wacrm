@@ -160,7 +160,30 @@ site_url = "http://127.0.0.1:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+#
+# The two /auth/callback entries are what forgot-password's
+# resetPasswordForEmail actually redirects to (src/app/(auth)/forgot-
+# password/page.tsx uses `${window.location.origin}/auth/callback?next=
+# /reset-password`) — without them GoTrue silently falls back to
+# `site_url` alone, dropping the path and query string, and the emailed
+# link lands on the bare origin instead of the callback route.
+#
+# The trailing `**` matters: despite the comment above saying "exact
+# URLs", GoTrue's match is exact against the *whole* URL including the
+# query string — confirmed empirically, registering the bare path
+# with no wildcard still fell back to site_url because `?next=
+# /reset-password` didn't match anything. `**` is GoTrue's own
+# glob syntax (docs: https://supabase.com/docs/guides/auth/redirect-urls)
+# and isn't bounded by `?`, so it covers any `next=` value a future
+# caller of this same callback route might send. Port 3100 matches how
+# this repo actually runs locally (see .claude/launch.json /
+# docs/pruebas-local.md); 3000 is the Supabase CLI's own generic
+# default, kept in case anyone runs `next dev` bare.
+additional_redirect_urls = [
+  "https://127.0.0.1:3000",
+  "http://localhost:3000/auth/callback**",
+  "http://localhost:3100/auth/callback**",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
