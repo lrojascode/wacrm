@@ -94,4 +94,51 @@ describe("findExistingContact", () => {
     const db = stubDb([{ id: "c1", phone: "15551234567" }]);
     expect(await findExistingContact(db, "acct", "   ")).toBeNull();
   });
+
+  // Regression for the bug that dropped inbound WhatsApp messages
+  // entirely: this stub honours the queried column and the LIKE suffix
+  // semantics for real, instead of always handing back every row like
+  // `stubDb` above. A contact saved through the manual form or CSV
+  // import keeps its formatted `phone` ("+51 987 654 321") — only
+  // `phone_normalized` is digits-only. `stubDb`'s always-return-rows
+  // behavior would have made this test pass even against the buggy
+  // `.like("phone", ...)` query, which is exactly why the bug shipped
+  // unnoticed.
+  function stubDbWithLikeSemantics(
+    rows: Array<{ id: string; phone: string; phone_normalized: string }>,
+  ): { db: SupabaseClient; queriedColumn: () => string | undefined } {
+    let queriedColumn: string | undefined;
+    const builder = {
+      select: () => builder,
+      eq: () => builder,
+      like: (column: string, pattern: string) => {
+        queriedColumn = column;
+        const suffix = pattern.replace(/^%/, "");
+        const data = rows.filter((r) =>
+          String(r[column as keyof typeof r]).endsWith(suffix),
+        );
+        return Promise.resolve({ data, error: null });
+      },
+    };
+    return {
+      db: { from: () => builder } as unknown as SupabaseClient,
+      queriedColumn: () => queriedColumn,
+    };
+  }
+
+  it("matches a contact saved with a formatted phone against an unformatted inbound number", async () => {
+    const { db } = stubDbWithLikeSemantics([
+      { id: "c1", phone: "+51 987 654 321", phone_normalized: "51987654321" },
+    ]);
+    const hit = await findExistingContact(db, "acct", "51987654321");
+    expect(hit?.id).toBe("c1");
+  });
+
+  it("filters on phone_normalized, not the raw formatted phone column", async () => {
+    const { db, queriedColumn } = stubDbWithLikeSemantics([
+      { id: "c1", phone: "+51 987 654 321", phone_normalized: "51987654321" },
+    ]);
+    await findExistingContact(db, "acct", "51987654321");
+    expect(queriedColumn()).toBe("phone_normalized");
+  });
 });
