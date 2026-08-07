@@ -564,9 +564,18 @@ async function processMessage(
   const senderPhone =
     normalizePhone(message.from ?? '') || normalizePhone(contact?.wa_id ?? '')
   if (!senderPhone) {
+    // Dump the shapes, not just the ids. This branch means Meta sent
+    // something we have no model for, and the only way to find out what
+    // is to have the payload in the log the first time it happens —
+    // the previous incident left nothing to go on.
     console.error(
       '[webhook] message dropped — payload carries no sender phone (neither messages[].from nor contacts[].wa_id):',
-      { wamid: message.id, type: message.type },
+      {
+        wamid: message.id,
+        type: message.type,
+        rawFrom: message.from,
+        pairedContact: contact ?? null,
+      },
     )
     return
   }
