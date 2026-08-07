@@ -46,6 +46,13 @@ export function MessageActions({
     message.sender_type === "agent" || message.sender_type === "bot";
 
   const handleContextMenu = (e: React.MouseEvent) => {
+    // ...except over media. This handler sits on the whole row, so
+    // suppressing the native menu here also killed "Save image as" on
+    // every photo in the thread. Media elements keep the browser menu;
+    // the long-press toolbar still works everywhere else in the bubble.
+    if (e.target instanceof Element && e.target.closest("img, video, audio")) {
+      return;
+    }
     e.preventDefault();
     setTouchOpen(true);
   };

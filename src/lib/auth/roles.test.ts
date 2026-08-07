@@ -3,6 +3,7 @@ import {
   ACCOUNT_ROLES,
   type AccountRole,
   canDeleteAccount,
+  canDeleteConversation,
   canEditSettings,
   canManageMembers,
   canSendMessages,
@@ -126,5 +127,12 @@ describe("capability predicates", () => {
     expect(canTransferOwnership("admin")).toBe(false);
     expect(canTransferOwnership("agent")).toBe(false);
     expect(canTransferOwnership("viewer")).toBe(false);
+  });
+
+  it("canDeleteConversation: owner only", () => {
+    expect(canDeleteConversation("owner")).toBe(true);
+    expect(canDeleteConversation("admin")).toBe(false);
+    expect(canDeleteConversation("agent")).toBe(false);
+    expect(canDeleteConversation("viewer")).toBe(false);
   });
 });

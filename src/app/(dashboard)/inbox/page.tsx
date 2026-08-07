@@ -275,6 +275,30 @@ function InboxPageInner() {
     [activeConversation, hydrateConversation]
   );
 
+  // A conversation is gone — either this tab deleted it, or realtime
+  // told us another member did. Same cleanup either way, so both paths
+  // land here. Declared above `handleConversationEvent` because that
+  // callback lists it as a dependency.
+  const handleConversationDeleted = useCallback(
+    (conversationId: string) => {
+      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      // The effect above rebuilds this from `conversations`, but not
+      // until after this render — drop it now so a realtime event
+      // arriving in between doesn't treat the row as still known.
+      knownConvIdsRef.current.delete(conversationId);
+
+      if (activeConversation?.id === conversationId) {
+        setActiveConversation(null);
+        setActiveContact(null);
+        setMessages([]);
+        autoSelectedForDeepLinkRef.current = null;
+        // Drop ?c=<deleted id> so a refresh doesn't try to reopen it.
+        router.replace("/inbox", { scroll: false });
+      }
+    },
+    [activeConversation?.id, router]
+  );
+
   // Handle realtime conversation events
   const handleConversationEvent = useCallback(
     (event: {
@@ -333,8 +357,16 @@ function InboxPageInner() {
           );
         }
       }
+
+      if (event.eventType === "DELETE") {
+        // Another member (an owner) deleted it. Postgres sends only the
+        // replica identity on DELETE, which for this table is the primary
+        // key — so `old.id` is all we get, and all we need.
+        const deletedId = event.old?.id;
+        if (deletedId) handleConversationDeleted(deletedId);
+      }
     },
-    [activeConversation, hydrateConversation]
+    [activeConversation, hydrateConversation, handleConversationDeleted]
   );
 
   // Subscribe to realtime. The `isConnected` flag below feeds the
@@ -590,6 +622,7 @@ function InboxPageInner() {
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
+            onDeleted={handleConversationDeleted}
           />
         </div>
 

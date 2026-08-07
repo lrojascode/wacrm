@@ -125,3 +125,17 @@ export function canDeleteAccount(role: AccountRole): boolean {
 export function canTransferOwnership(role: AccountRole): boolean {
   return role === "owner";
 }
+
+/**
+ * Owner only: delete a conversation. Irreversible, and it takes the
+ * whole message history (and its stored attachments) with it, so it
+ * sits with the other destructive operations rather than with the
+ * day-to-day inbox actions agents perform.
+ *
+ * Mirrored by the `conversations_delete` RLS policy (migration 045) —
+ * the dashboard writes to PostgREST directly, so this predicate alone
+ * would gate the button but not the operation.
+ */
+export function canDeleteConversation(role: AccountRole): boolean {
+  return role === "owner";
+}

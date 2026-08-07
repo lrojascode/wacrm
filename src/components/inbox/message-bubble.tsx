@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Message, MessageReaction } from "@/types";
 import {
@@ -19,6 +19,7 @@ import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
 import { MessageReactions } from "./message-reactions";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
+import { ImageLightbox } from "./image-lightbox";
 import { useTranslations } from "next-intl";
 
 interface MessageBubbleProps {
@@ -56,42 +57,27 @@ function MediaUnavailable({ label, t }: { label: string, t: ReturnType<typeof us
   );
 }
 
+/**
+ * The `/api/whatsapp/media/` proxy is same-origin and cookie-authenticated,
+ * so a plain `<img src>` carries the session automatically. It used to be
+ * fetched into a `blob:` URL instead, which broke "Save image as" (a blob
+ * has no filename) and leaked every object URL it created.
+ */
 function MediaImage({ url, alt }: { url: string; alt: string }) {
-  const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [zoomed, setZoomed] = useState(false);
 
-  const loadImage = useCallback(async () => {
-    if (!url) return;
-
-    // Proxy URLs need auth fetch to create blob URL
-    if (url.startsWith("/api/whatsapp/media/")) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("Failed to load media");
-        const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        setSrc(blobUrl);
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      setSrc(url);
-      setLoading(false);
-    }
-  }, [url]);
-
-  useEffect(() => {
-    loadImage();
-    return () => {
-      if (src?.startsWith("blob:")) {
-        URL.revokeObjectURL(src);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadImage]);
+  // A new url means a new load; without this reset, a swapped src would
+  // keep showing the previous image's resolved state. Adjusted during
+  // render rather than in an effect — React re-runs this component
+  // before committing, so there's no flash of the stale state.
+  const [loadedUrl, setLoadedUrl] = useState(url);
+  if (loadedUrl !== url) {
+    setLoadedUrl(url);
+    setError(false);
+    setLoading(true);
+  }
 
   if (error) {
     return (
@@ -101,21 +87,34 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
   return (
-    <img
-      src={src ?? ""}
-      alt={alt}
-      className="max-h-64 max-w-60 rounded-lg object-cover"
-      onError={() => setError(true)}
-    />
+    <>
+      {loading && (
+        <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      )}
+      <img
+        src={url}
+        alt={alt}
+        className={cn(
+          "max-h-64 max-w-60 cursor-zoom-in rounded-lg object-cover",
+          loading && "hidden",
+        )}
+        onClick={() => setZoomed(true)}
+        onLoad={() => setLoading(false)}
+        onError={() => {
+          setLoading(false);
+          setError(true);
+        }}
+      />
+      <ImageLightbox
+        open={zoomed}
+        onOpenChange={setZoomed}
+        url={url}
+        alt={alt}
+      />
+    </>
   );
 }
 

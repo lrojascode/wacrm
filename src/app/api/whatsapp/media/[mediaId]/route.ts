@@ -3,6 +3,33 @@ import { createClient } from '@/lib/supabase/server'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
 
+/**
+ * Meta identifies media by an opaque id with no filename or extension, so
+ * we synthesise one from the MIME type. Covers what WhatsApp actually
+ * sends; anything else falls back to the subtype, which is close enough
+ * for a save dialog (`audio/ogg` -> `.ogg`).
+ */
+function mediaFilename(mediaId: string, contentType: string): string {
+  const mime = contentType.split(';')[0].trim().toLowerCase()
+  const known: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'video/mp4': 'mp4',
+    'audio/mpeg': 'mp3',
+    'audio/ogg': 'ogg',
+    'application/pdf': 'pdf',
+  }
+  const subtype = mime.split('/')[1] ?? ''
+  // Strip vendor/suffix noise (`application/vnd.ms-excel`, `image/svg+xml`).
+  const fallback = subtype.split('+')[0].replace(/[^a-z0-9.]/g, '') || 'bin'
+  const ext = known[mime] ?? fallback
+  // The id is Meta-generated and numeric in practice, but it lands in a
+  // header — keep it to characters that can't break out of the quotes.
+  const safeId = mediaId.replace(/[^A-Za-z0-9_-]/g, '') || 'media'
+  return `${safeId}.${ext}`
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ mediaId: string }> }
@@ -73,11 +100,18 @@ export async function GET(
       accessToken,
     })
 
+    const resolvedType =
+      contentType || mediaInfo.mimeType || 'application/octet-stream'
+
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        'Content-Type': contentType || mediaInfo.mimeType || 'application/octet-stream',
+        'Content-Type': resolvedType,
         'Cache-Control': 'public, max-age=86400',
+        // `inline` so the browser still renders it in the <img>, but the
+        // filename is what "Save image as" pre-fills. Without it the save
+        // dialog offers the bare media id with no extension.
+        'Content-Disposition': `inline; filename="${mediaFilename(mediaId, resolvedType)}"`,
       },
     })
   } catch (error) {

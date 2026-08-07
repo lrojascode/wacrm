@@ -9,11 +9,30 @@ import {
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X } from "lucide-react";
+import {
+  Search,
+  ChevronDown,
+  X,
+  MoreVertical,
+  Trash2,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useLocale, useTranslations } from "next-intl";
+import { toast } from "sonner";
 import { dateFnsLocale } from "@/lib/i18n/date-locale";
+import { useCan } from "@/hooks/use-can";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -35,6 +54,13 @@ interface ConversationListProps {
    * or the tab was throttled. Optional so existing callers keep working.
    */
   resyncToken?: number;
+  /**
+   * Called after a conversation has been deleted server-side, so the
+   * parent can drop it from its own state and clear the open thread if
+   * that's the one that went. Optional — without it the menu still
+   * works, the parent just won't react.
+   */
+  onDeleted?: (conversationId: string) => void;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -53,9 +79,15 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
   resyncToken = 0,
+  onDeleted,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
-  
+  const canDelete = useCan("delete-conversation");
+  // One dialog for the whole list rather than one per row; the pending
+  // conversation is the open/closed state.
+  const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
     { label: t("filterUnread"), value: "unread" },
@@ -217,6 +249,36 @@ export function ConversationList({
     },
     [onSelect]
   );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/conversations/${pendingDelete.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.error || `Delete failed: ${res.status}`);
+      }
+      // The list itself is a controlled view of the parent's state, so
+      // the parent does the removal — realtime would eventually deliver
+      // the same DELETE, but not fast enough to feel responsive.
+      onDeleted?.(pendingDelete.id);
+      toast.success(t("deleteSuccess"));
+      setPendingDelete(null);
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : t("deleteError"));
+    } finally {
+      setDeleting(false);
+    }
+  }, [pendingDelete, onDeleted, t]);
+
+  const pendingName =
+    pendingDelete?.contact?.name ||
+    pendingDelete?.contact?.phone ||
+    t("unknown");
 
   const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
 
@@ -414,12 +476,50 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                onRequestDelete={canDelete ? setPendingDelete : undefined}
                 t={t}
               />
             ))}
           </div>
         )}
       </ScrollArea>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          // Never let a backdrop click strand an in-flight request.
+          if (!open && !deleting) setPendingDelete(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-4 text-amber-400" />
+              {t("deleteTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("deleteDescription", { name: pendingName })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={deleting}
+              onClick={() => setPendingDelete(null)}
+            >
+              {t("deleteCancel")}
+            </Button>
+            <Button
+              className="bg-red-600 text-white hover:bg-red-700"
+              disabled={deleting}
+              onClick={handleConfirmDelete}
+            >
+              {deleting && <Loader2 className="size-4 animate-spin" />}
+              {t("deleteConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -428,6 +528,8 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  /** Owner-only. Omitted for everyone else, which hides the menu entirely. */
+  onRequestDelete?: (conversation: Conversation) => void;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -435,6 +537,7 @@ function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  onRequestDelete,
   t,
 }: ConversationItemProps) {
   // `t` is threaded down as a prop, but the locale is a plain context
@@ -456,11 +559,16 @@ function ConversationItem({
     : "";
 
   return (
+    // The row itself is a <button>, so the menu trigger can't be nested
+    // inside it — it sits as an absolutely-positioned sibling instead.
+    <div className="group/item relative">
     <button
       onClick={handleClick}
       className={cn(
         "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50",
-        isActive && "border-l-2 border-primary bg-muted/70"
+        isActive && "border-l-2 border-primary bg-muted/70",
+        // Room for the menu button so a long preview doesn't slide under it.
+        onRequestDelete && "pr-9"
       )}
     >
       {/* Avatar */}
@@ -505,5 +613,33 @@ function ConversationItem({
         </div>
       </div>
     </button>
+
+      {onRequestDelete && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={t("moreActions")}
+            className={cn(
+              "absolute top-2 right-1.5 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-opacity",
+              "hover:bg-muted hover:text-foreground",
+              // Hidden until hover/keyboard focus, but always visible while
+              // its own menu is open — otherwise the trigger vanishes the
+              // moment focus moves into the popup.
+              "opacity-0 group-hover/item:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100"
+            )}
+          >
+            <MoreVertical className="h-4 w-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => onRequestDelete(conversation)}
+            >
+              <Trash2 className="h-4 w-4" />
+              {t("deleteAction")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
   );
 }

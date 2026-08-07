@@ -3,6 +3,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import {
   canDeleteAccount,
+  canDeleteConversation,
   canEditSettings,
   canManageMembers,
   canSendMessages,
@@ -22,6 +23,7 @@ export type CanAction =
   | "send-messages"
   | "view-only"
   | "delete-account"
+  | "delete-conversation"
   | "transfer-ownership";
 
 /**
@@ -52,6 +54,8 @@ export function useCan(action: CanAction): boolean {
       return canViewOnly(accountRole);
     case "delete-account":
       return canDeleteAccount(accountRole);
+    case "delete-conversation":
+      return canDeleteConversation(accountRole);
     case "transfer-ownership":
       return canTransferOwnership(accountRole);
     default: {

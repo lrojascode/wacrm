@@ -231,7 +231,15 @@
       "clearAll": "Limpiar todo",
       "noConversations": "No se encontraron conversaciones",
       "noMessagesYet": "Aún no hay mensajes",
-      "unknown": "Desconocido"
+      "unknown": "Desconocido",
+      "moreActions": "Más acciones",
+      "deleteAction": "Borrar conversación",
+      "deleteTitle": "¿Borrar la conversación?",
+      "deleteDescription": "Esto borra permanentemente la conversación con {name}, todos sus mensajes y las imágenes adjuntas. Los negocios vinculados se conservan. No se puede deshacer.",
+      "deleteConfirm": "Borrar",
+      "deleteCancel": "Cancelar",
+      "deleteSuccess": "Conversación borrada",
+      "deleteError": "No se pudo borrar la conversación"
     },
     "messageThread": {
       "backToConversations": "Volver a conversaciones",
@@ -305,7 +313,9 @@
       "interactiveReply": "[Respuesta interactiva]",
       "unsupported": "[Tipo de mensaje no compatible]",
       "aiBadge": "IA",
-      "aiBadgeTitle": "Enviado automáticamente por el asistente de IA"
+      "aiBadgeTitle": "Enviado automáticamente por el asistente de IA",
+      "download": "Descargar",
+      "close": "Cerrar"
     },
     "actions": {
       "reply": "Responder",
