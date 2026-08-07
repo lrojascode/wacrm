@@ -1,6 +1,6 @@
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { getMediaUrl } from '@/lib/whatsapp/meta-api'
-import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
@@ -62,6 +62,16 @@ export interface WhatsAppMessage {
   referral?: WhatsAppReferral
 }
 
+/**
+ * One sender's identity, as Meta sends it alongside inbound messages.
+ * `wa_id` is that sender's own number — the join key back to
+ * `message.from` (see `matchContactForMessage`).
+ */
+export interface WhatsAppContact {
+  profile?: { name?: string }
+  wa_id?: string
+}
+
 export interface WhatsAppWebhookEntry {
   id: string
   changes: Array<{
@@ -71,10 +81,7 @@ export interface WhatsAppWebhookEntry {
         display_phone_number: string
         phone_number_id: string
       }
-      contacts?: Array<{
-        profile: { name: string }
-        wa_id: string
-      }>
+      contacts?: WhatsAppContact[]
       messages?: WhatsAppMessage[]
       statuses?: Array<{
         id: string
@@ -106,6 +113,43 @@ export interface ProcessWebhookOptions {
    * the whole deployment, so there is nothing to distinguish).
    */
   isEntryAuthorized?: (phoneNumberId: string) => Promise<boolean>
+}
+
+/**
+ * Pair an inbound message with the `contacts` entry for ITS sender.
+ *
+ * Meta sends one `contacts` entry per unique *sender*, not one per
+ * message, so the two arrays are not positionally aligned: a batch of
+ * three messages from two people arrives as `messages.length === 3` and
+ * `contacts.length === 2`. Pairing by index (`contacts[i] ||
+ * contacts[0]`) therefore stamped the wrong person's name onto message
+ * #3 — and because `findOrCreateContact` also *updates* the name when it
+ * differs, every later message kept renaming an existing contact to
+ * whoever happened to be first in the batch.
+ *
+ * `wa_id` is the sender's own number and has been in the payload all
+ * along; match on that. `phonesMatch` covers the trunk-prefix variance
+ * WhatsApp is inconsistent about (MX/AR numbers arrive with and without
+ * the extra digit). The positional guess stays as the last resort so a
+ * payload shaped differently than documented degrades to the old
+ * behaviour rather than dropping the message.
+ */
+export function matchContactForMessage(
+  contacts: WhatsAppContact[] | undefined,
+  message: Pick<WhatsAppMessage, 'from'>,
+  index: number,
+): WhatsAppContact | undefined {
+  const list = contacts ?? []
+  const from = normalizePhone(message?.from ?? '')
+
+  if (from) {
+    const exact = list.find((c) => normalizePhone(c?.wa_id ?? '') === from)
+    if (exact) return exact
+    const variant = list.find((c) => c?.wa_id && phonesMatch(c.wa_id, from))
+    if (variant) return variant
+  }
+
+  return list[index] ?? list[0]
 }
 
 export async function processWebhook(
@@ -150,13 +194,13 @@ export async function processWebhook(
         }
       }
 
-      // Handle incoming messages. An empty array is truthy in JS, so
-      // `!value.contacts` alone lets `contacts: []` slip through — three
-      // lines later `value.contacts[0]` is undefined and
-      // `contact.profile.name` throws, which used to abort the entire
-      // batch (see the per-message try/catch below). `.length` closes
-      // that gap explicitly.
-      if (!value.messages?.length || !value.contacts?.length) continue
+      // Handle incoming messages. `contacts` is deliberately NOT part of
+      // this guard: it only ever carried the display name, while the
+      // identity that matters — the sender's number — comes from
+      // `message.from`. Requiring it meant a payload that arrived with
+      // `contacts: []` (or none at all) silently dropped a real customer
+      // message that we had everything we needed to store.
+      if (!value.messages?.length) continue
 
       // Find user's config by phone_number_id. `.single()` returns
       // PGRST116 for both 0 rows AND ≥2 rows — distinguish them so
@@ -199,7 +243,7 @@ export async function processWebhook(
 
       for (let i = 0; i < value.messages.length; i++) {
         const message = value.messages[i]
-        const contact = value.contacts[i] || value.contacts[0]
+        const contact = matchContactForMessage(value.contacts, message, i)
 
         // One message's own try/catch, not just the outer processWebhook
         // one. Meta batches multiple customers' messages into a single
@@ -493,7 +537,7 @@ async function handleReaction(
 
 async function processMessage(
   message: WhatsAppMessage,
-  contact: { profile?: { name?: string }; wa_id?: string },
+  contact: WhatsAppContact | undefined,
   // Tenancy. Resolved from the matched whatsapp_config row; every
   // contact / conversation / message row created downstream is
   // stamped with this so any member of the account can see it.
@@ -504,12 +548,34 @@ async function processMessage(
   configOwnerUserId: string,
   accessToken: string
 ) {
-  const senderPhone = normalizePhone(message.from)
+  // The sender's number is this message's whole identity — every lookup
+  // below keys off it. `message.from` is authoritative; the paired
+  // contact's `wa_id` is the same number and covers a payload that
+  // omits `from`.
+  //
+  // Bailing out when both are missing is not defensive noise, it is the
+  // difference between one thread and N. An empty phone yields
+  // `phone_normalized = ''`, which the UNIQUE index deliberately
+  // excludes (migration 022: `WHERE phone_normalized <> ''`) — so the
+  // de-dup lookup misses, the insert is NOT rejected, and every message
+  // from that sender forks a brand-new contact AND a brand-new
+  // conversation. `merge_duplicate_contacts()` skips those rows for the
+  // same reason, so the fragments are never cleaned up either.
+  const senderPhone =
+    normalizePhone(message.from ?? '') || normalizePhone(contact?.wa_id ?? '')
+  if (!senderPhone) {
+    console.error(
+      '[webhook] message dropped — payload carries no sender phone (neither messages[].from nor contacts[].wa_id):',
+      { wamid: message.id, type: message.type },
+    )
+    return
+  }
+
   // Optional chaining, not a required shape: `findOrCreateContact` below
   // already falls back to the phone number when the name is falsy, so a
   // malformed or absent `profile` degrades to that same fallback instead
   // of throwing and dropping the message.
-  const contactName = contact.profile?.name ?? ''
+  const contactName = contact?.profile?.name ?? ''
 
   // Find or create contact
   const contactOutcome = await findOrCreateContact(

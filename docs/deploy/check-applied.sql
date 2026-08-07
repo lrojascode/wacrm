@@ -15,12 +15,29 @@
 
 WITH checks AS (
   SELECT
-    '037 attribution'  AS release,
+    -- The two de-dup indexes are what stop one customer from
+    -- fragmenting into a wall of duplicate contacts and threads. They
+    -- predate this file, so a production DB set up before it can be
+    -- missing them with nothing to say so — which is exactly how it
+    -- went unnoticed. Check them first.
+    '022 contact phone dedup' AS release,
+    EXISTS (SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'contacts' AND column_name = 'phone_normalized')
+      AND to_regclass('public.idx_contacts_account_phone_normalized') IS NOT NULL
+      AS ok,
+    'docs/deploy/inbox-dedup.sql' AS bundle
+  UNION ALL
+  SELECT
+    '036 conversation dedup',
+    to_regclass('public.idx_conversations_account_contact') IS NOT NULL,
+    'docs/deploy/inbox-dedup.sql'
+  UNION ALL
+  SELECT
+    '037 attribution',
     to_regclass('public.attribution_events') IS NOT NULL
       AND EXISTS (SELECT 1 FROM information_schema.columns
-                  WHERE table_name = 'contacts' AND column_name = 'source')
-      AS ok,
-    'docs/deploy/ads-attribution.sql' AS bundle
+                  WHERE table_name = 'contacts' AND column_name = 'source'),
+    'docs/deploy/ads-attribution.sql'
   UNION ALL
   SELECT
     '038 ad platforms',
