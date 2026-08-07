@@ -28,7 +28,13 @@ import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
 
 export interface WhatsAppMessage {
   id: string
-  from: string
+  /**
+   * The sender's number. Documented as always present — and in the
+   * incident that motivated `matchContactForMessage` it was not, while
+   * `contacts[].wa_id` carried the same number. Optional so the
+   * compiler keeps that path handled rather than trusting the doc.
+   */
+  from?: string
   timestamp: string
   type: string
   text?: { body: string }

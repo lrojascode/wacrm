@@ -158,6 +158,17 @@ describe('matchContactForMessage', () => {
     )
   })
 
+  it('still resolves a contact when `from` is missing entirely', () => {
+    // The incident shape: `messages[].from` absent, `contacts[]` intact.
+    // Positional lookup is all that is left, and it has to keep working
+    // — it is what lets processMessage recover the number from `wa_id`
+    // instead of writing a contact with an empty phone.
+    expect(matchContactForMessage([tatiana], { from: undefined }, 0)).toBe(
+      tatiana,
+    )
+    expect(matchContactForMessage([tatiana], { from: '' }, 0)).toBe(tatiana)
+  })
+
   it('returns undefined for an absent contacts array', () => {
     expect(matchContactForMessage(undefined, { from: '51987654321' }, 0)).toBe(
       undefined,
