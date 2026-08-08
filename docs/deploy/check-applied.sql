@@ -33,6 +33,15 @@ WITH checks AS (
     'docs/deploy/inbox-dedup.sql'
   UNION ALL
   SELECT
+    -- 046 repairs merge_duplicate_contacts(), which 036 silently broke:
+    -- with both applied, merging any contact group that holds more than
+    -- one conversation dies on idx_conversations_account_contact. The
+    -- extracted core is the only trace it leaves.
+    '046 contact merge fix',
+    to_regprocedure('public.merge_contact_group(uuid[])') IS NOT NULL,
+    'docs/deploy/fix-contact-merge.sql'
+  UNION ALL
+  SELECT
     '037 attribution',
     to_regclass('public.attribution_events') IS NOT NULL
       AND EXISTS (SELECT 1 FROM information_schema.columns
