@@ -26,6 +26,40 @@
 export const MAX_ATTEMPTS = 5
 
 /**
+ * Group already-resolved ads by their campaign's META id, ready for one
+ * UPDATE per campaign.
+ *
+ * `ad_entities.campaign_id` is our internal `ad_campaigns.id`, but
+ * `contacts.source_campaign_id` holds Meta's external id — that is what
+ * the /campaigns reports join on (src/lib/ads/queries.ts). Getting this
+ * translation backwards would write ids that match nothing and leave the
+ * lead count reading zero, so it lives here as a pure function rather
+ * than inline in the sync's IO path.
+ *
+ * Entities whose campaign is missing from `campaigns` are dropped: the
+ * campaigns pass hadn't synced it yet, and the next run will pick the ad
+ * up again.
+ */
+export function groupAdsByCampaignExternalId(
+  entities: { adId: string; campaignId: string | null }[],
+  campaigns: { id: string; externalId: string }[],
+): Map<string, string[]> {
+  const externalById = new Map(campaigns.map((c) => [c.id, c.externalId]))
+  const out = new Map<string, string[]>()
+
+  for (const entity of entities) {
+    if (!entity.campaignId) continue
+    const externalId = externalById.get(entity.campaignId)
+    if (!externalId) continue
+    const list = out.get(externalId) ?? []
+    list.push(entity.adId)
+    out.set(externalId, list)
+  }
+
+  return out
+}
+
+/**
  * Minimum wait before attempt N+1, indexed by attempts already made.
  * Starts immediate (a brand-new ad is tried on the next run) and widens
  * to a day, so a genuinely broken ad costs at most a handful of calls

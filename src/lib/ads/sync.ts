@@ -33,7 +33,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { utcDayKey, utcDayKeyDaysAgo } from './day-key'
-import { selectAdsToResolve } from './resolution-policy'
+import { groupAdsByCampaignExternalId, selectAdsToResolve } from './resolution-policy'
 import {
   extractMessagingStarted,
   fetchCampaignInsights,
@@ -57,6 +57,14 @@ export interface SyncResult {
   metricsDaysSynced: number
   adsResolved: number
   adsFailed: number
+  /**
+   * Contacts attached to a campaign whose ad was ALREADY resolved on an
+   * earlier run. Reported separately from `adsResolved` because it costs
+   * no Graph call — and because a run that reads `resolved: 0,
+   * backfilled: 12` is the signal that leads are arriving on ads we
+   * already know, which is the normal steady state.
+   */
+  adsBackfilled: number
   error: string | null
 }
 
@@ -109,6 +117,7 @@ async function syncOneAdAccount(
     metricsDaysSynced: 0,
     adsResolved: 0,
     adsFailed: 0,
+    adsBackfilled: 0,
     error: null,
   }
 
@@ -131,6 +140,9 @@ async function syncOneAdAccount(
     const { resolved, failed } = await resolveUnresolvedAds(db, row, accessToken)
     result.adsResolved = resolved
     result.adsFailed = failed
+    // AFTER the resolution pass, so an ad resolved just now also gets
+    // its older contacts attached in the same run.
+    result.adsBackfilled = await backfillResolvedAds(db, row)
 
     await db
       .from('ad_accounts')
@@ -146,6 +158,104 @@ async function syncOneAdAccount(
   }
 
   return result
+}
+
+/**
+ * Attach contacts to campaigns whose ad was resolved on an EARLIER run.
+ *
+ * The resolution pass only writes `contacts.source_campaign_id` for the
+ * ads it resolves in that same run, and `isDueForRetry` permanently
+ * skips any ad that already has a campaign ("Non-null means done —
+ * never retry"). Between those two rules there was no path at all for a
+ * contact that arrives AFTER its ad was resolved: the ad is never
+ * revisited, so nothing ever fills the contact in. The first lead on an
+ * ad got attributed and every later one on the same ad stayed NULL
+ * forever — a campaign's lead count froze at whatever it held the day
+ * its ads were resolved, while the sync kept reporting success with
+ * `adsResolved: 0` because, correctly, nothing was due.
+ *
+ * So the attach is its own pass, keyed off `ad_entities` rather than
+ * off what this run happened to resolve. No Graph calls — it is a join
+ * over data we already have.
+ */
+async function backfillResolvedAds(
+  db: SupabaseClient,
+  row: AdAccountRow,
+): Promise<number> {
+  // Contacts still waiting, and the ads they came from.
+  const { data: pendingRows, error: pendingError } = await db
+    .from('contacts')
+    .select('source_ad_id')
+    .eq('account_id', row.account_id)
+    .not('source_ad_id', 'is', null)
+    .is('source_campaign_id', null)
+    .limit(500)
+  if (pendingError) {
+    throw new Error(`Failed to list contacts awaiting attribution: ${pendingError.message}`)
+  }
+
+  const adIds = Array.from(
+    new Set(((pendingRows ?? []) as { source_ad_id: string }[]).map((c) => c.source_ad_id)),
+  )
+  if (adIds.length === 0) return 0
+
+  // Only ads we have already resolved to one of our campaigns.
+  const { data: entityRows, error: entityError } = await db
+    .from('ad_entities')
+    .select('ad_id, campaign_id')
+    .eq('account_id', row.account_id)
+    .in('ad_id', adIds)
+    .not('campaign_id', 'is', null)
+  if (entityError) {
+    throw new Error(`Failed to load resolved ads: ${entityError.message}`)
+  }
+
+  const entities = (entityRows ?? []) as { ad_id: string; campaign_id: string }[]
+  if (entities.length === 0) return 0
+
+  const { data: campaignRows, error: campaignError } = await db
+    .from('ad_campaigns')
+    .select('id, external_id')
+    .in('id', Array.from(new Set(entities.map((e) => e.campaign_id))))
+  if (campaignError) {
+    throw new Error(`Failed to load campaigns for backfill: ${campaignError.message}`)
+  }
+
+  // One UPDATE per campaign rather than per ad. The internal -> external
+  // id translation lives in the policy module (pure, tested there).
+  const adIdsByExternal = groupAdsByCampaignExternalId(
+    entities.map((e) => ({ adId: e.ad_id, campaignId: e.campaign_id })),
+    ((campaignRows ?? []) as { id: string; external_id: string }[]).map((c) => ({
+      id: c.id,
+      externalId: c.external_id,
+    })),
+  )
+
+  let backfilled = 0
+  for (const [externalId, ads] of adIdsByExternal) {
+    // Same pair of tables the resolution pass writes: contacts drives
+    // the /campaigns reports, attribution_events is the append-only log.
+    const { data: updated, error: updateError } = await db
+      .from('contacts')
+      .update({ source_campaign_id: externalId })
+      .eq('account_id', row.account_id)
+      .in('source_ad_id', ads)
+      .is('source_campaign_id', null)
+      .select('id')
+    if (updateError) {
+      throw new Error(`Failed to backfill contact attribution: ${updateError.message}`)
+    }
+    backfilled += (updated ?? []).length
+
+    await db
+      .from('attribution_events')
+      .update({ campaign_id: externalId })
+      .eq('account_id', row.account_id)
+      .in('ad_id', ads)
+      .is('campaign_id', null)
+  }
+
+  return backfilled
 }
 
 /** Map of Meta campaign id -> our ad_campaigns.id, after upserting. */

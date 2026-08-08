@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   MAX_ATTEMPTS,
+  groupAdsByCampaignExternalId,
   isDueForRetry,
   selectAdsToResolve,
   type AdResolutionCandidate,
@@ -23,6 +24,60 @@ function candidate(over: Partial<AdResolutionCandidate> = {}): AdResolutionCandi
 function ago(minutes: number): Date {
   return new Date(NOW.getTime() - minutes * 60 * 1000)
 }
+
+describe('groupAdsByCampaignExternalId', () => {
+  it('translates the internal campaign id to Meta’s external id', () => {
+    // The whole point: contacts.source_campaign_id stores the EXTERNAL
+    // id, which is what the /campaigns reports join on. Writing the
+    // internal uuid here would match nothing and the lead count would
+    // read zero with no error anywhere.
+    const out = groupAdsByCampaignExternalId(
+      [{ adId: 'ad-1', campaignId: 'internal-uuid-1' }],
+      [{ id: 'internal-uuid-1', externalId: '23851234567890123' }],
+    )
+
+    expect(out.get('23851234567890123')).toEqual(['ad-1'])
+  })
+
+  it('groups every ad of one campaign into a single entry', () => {
+    const out = groupAdsByCampaignExternalId(
+      [
+        { adId: 'ad-1', campaignId: 'c1' },
+        { adId: 'ad-2', campaignId: 'c1' },
+        { adId: 'ad-3', campaignId: 'c2' },
+      ],
+      [
+        { id: 'c1', externalId: 'ext-1' },
+        { id: 'c2', externalId: 'ext-2' },
+      ],
+    )
+
+    expect(out.get('ext-1')).toEqual(['ad-1', 'ad-2'])
+    expect(out.get('ext-2')).toEqual(['ad-3'])
+    expect(out.size).toBe(2)
+  })
+
+  it('drops ads whose campaign has not been synced yet', () => {
+    // The campaigns pass didn't see it this run. Skipping leaves the
+    // contact pending, so the next run picks it up — better than
+    // stamping an id the reports cannot resolve.
+    const out = groupAdsByCampaignExternalId(
+      [{ adId: 'ad-1', campaignId: 'not-synced' }],
+      [{ id: 'other', externalId: 'ext-1' }],
+    )
+
+    expect(out.size).toBe(0)
+  })
+
+  it('ignores unresolved ads', () => {
+    const out = groupAdsByCampaignExternalId(
+      [{ adId: 'ad-1', campaignId: null }],
+      [{ id: 'c1', externalId: 'ext-1' }],
+    )
+
+    expect(out.size).toBe(0)
+  })
+})
 
 describe('isDueForRetry', () => {
   it('tries an ad nobody has attempted yet', () => {
