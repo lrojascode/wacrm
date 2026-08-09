@@ -19,7 +19,7 @@ import { syncAllAdAccounts } from '@/lib/ads/sync'
 
 export async function POST() {
   try {
-    const ctx = await requireRole('admin')
+    const ctx = await requireRole('owner')
 
     const limit = checkRateLimit(`admin:adsSyncNow:${ctx.userId}`, RATE_LIMITS.adminAction)
     if (!limit.success) return rateLimitResponse(limit)

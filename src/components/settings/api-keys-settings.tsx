@@ -5,7 +5,7 @@
 //
 // Manage the credentials that authenticate the public REST API
 // (`/api/v1/*`). Any member sees the roster (read-only); admin+ can
-// mint and revoke (gated by <RequireRole min="admin"> here and the
+// mint and revoke (gated by <RequireRole min="owner"> here and the
 // admin-only API routes + RLS on the server).
 //
 // One-time reveal: a freshly-minted key's plaintext is shown ONCE in
@@ -145,7 +145,7 @@ export function ApiKeysSettings() {
           })
         }
         action={
-          <RequireRole min="admin">
+          <RequireRole min="owner">
             <Button onClick={() => setCreateOpen(true)}>
               <Plus className="size-4" />
               {t('newApiKey')}
@@ -242,7 +242,7 @@ export function ApiKeysSettings() {
                     </div>
 
                     {status === 'active' && (
-                      <RequireRole min="admin">
+                      <RequireRole min="owner">
                         <Button
                           variant="outline"
                           size="sm"

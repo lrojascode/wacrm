@@ -4,6 +4,7 @@ import {
   type AccountRole,
   canDeleteAccount,
   canDeleteConversation,
+  canEditOwnerSettings,
   canEditSettings,
   canManageMembers,
   canSendMessages,
@@ -134,5 +135,15 @@ describe("capability predicates", () => {
     expect(canDeleteConversation("admin")).toBe(false);
     expect(canDeleteConversation("agent")).toBe(false);
     expect(canDeleteConversation("viewer")).toBe(false);
+  });
+
+  it("canEditOwnerSettings: owner only — an admin does not qualify", () => {
+    // The whole point of this predicate (migration 047) is that
+    // `admin` is no longer enough for Brand / WhatsApp / Ad accounts /
+    // Team members / API keys, unlike the plain canEditSettings above.
+    expect(canEditOwnerSettings("owner")).toBe(true);
+    expect(canEditOwnerSettings("admin")).toBe(false);
+    expect(canEditOwnerSettings("agent")).toBe(false);
+    expect(canEditOwnerSettings("viewer")).toBe(false);
   });
 });

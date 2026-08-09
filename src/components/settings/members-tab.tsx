@@ -15,7 +15,7 @@
 //
 // Role-gating
 //   The tab itself is reachable by any member, but mutation buttons
-//   are wrapped in `<RequireRole min="admin">` / `useCan` so an
+//   are wrapped in `<RequireRole min="owner">` / `useCan` so an
 //   agent or viewer sees the roster read-only. The server-side
 //   RPCs (set_member_role, remove_account_member) double-check
 //   the role anyway.
@@ -295,7 +295,7 @@ export function MembersTab() {
         title={t('title')}
         description={t('description')}
         action={
-          <RequireRole min="admin">
+          <RequireRole min="owner">
             <Button onClick={() => setInviteOpen(true)}>
               <Plus className="size-4" />
               {t('inviteMember')}
@@ -483,7 +483,7 @@ export function MembersTab() {
       </Card>
 
       {/* Pending invitations — admin+ only */}
-      <RequireRole min="admin">
+      <RequireRole min="owner">
         <div>
           <div className="mb-2 flex items-center gap-2">
             <UsersRound className="size-4 text-muted-foreground" />

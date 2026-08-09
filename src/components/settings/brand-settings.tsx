@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ImagePlus, Loader2, Sparkles, Trash2 } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import {
   BRAND_BUCKET,
@@ -49,18 +48,23 @@ import { SettingsPanelHead } from "./settings-panel-head";
  * branding" flag that the server needs — it cannot run the client's
  * "is this name just the user's own name?" heuristic.
  *
- * Writes go straight to `accounts`; the `accounts_update` RLS policy
- * (017) already restricts that to admins+, so non-admins get a
- * disabled, read-only view. The storage policies (043) enforce the
- * same rule for the logo object itself.
+ * The logo file itself is still uploaded client-side straight to
+ * Storage (`uploadAccountMedia`); the `brand-assets` bucket's RLS
+ * policies (043, tightened to owner-only by 047) gate that write.
+ * Persisting the resulting URL — and the name — goes through
+ * `/api/account/brand` (owner-only): migration 047 revokes UPDATE on
+ * `accounts.brand_name` / `logo_url` from the authenticated role
+ * entirely, so even the owner's own session can no longer write those
+ * columns directly. Non-owners see a disabled, read-only view here,
+ * gated by `isOwner` client-side as a UX nicety — the API
+ * route and the storage policy are the actual boundary.
  */
 export function BrandSettings() {
-  const supabase = createClient();
   const router = useRouter();
   const {
     accountId,
     account,
-    canEditSettings,
+    isOwner,
     profileLoading,
     refreshProfile,
   } = useAuth();
@@ -148,19 +152,23 @@ export function BrandSettings() {
       }
 
       const brandName = normalizeBrandName(name);
-      const { error } = await supabase
-        .from("accounts")
-        .update({
-          // Both columns, one field — see the note at the top.
-          // `name` is NOT NULL, so an emptied field reverts it to
-          // whatever it was rather than failing the write.
-          name: brandName ?? savedName ?? "",
-          brand_name: brandName,
-          logo_url: nextLogoUrl,
-        })
-        .eq("id", accountId);
 
-      if (error) {
+      // accounts.brand_name / logo_url are unreachable through the
+      // user's own session as of migration 047 — even the owner now
+      // writes them through this owner-gated route, whose service-role
+      // client is the only remaining path. `name` is NOT NULL, so an
+      // emptied field reverts server-side to whatever it already was
+      // rather than failing the write.
+      const res = await fetch("/api/account/brand", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: brandName ?? savedName ?? "",
+          logo_url: nextLogoUrl,
+        }),
+      });
+
+      if (!res.ok) {
         toast.error(t("saveFailed"));
         setSaving(false);
         return;
@@ -224,7 +232,7 @@ export function BrandSettings() {
                   <ImagePlus className="size-5" />
                 </div>
               )}
-              {canEditSettings && (
+              {isOwner && (
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     ref={fileInputRef}
@@ -269,18 +277,18 @@ export function BrandSettings() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={MAX_BRAND_NAME_LEN}
-              disabled={!canEditSettings || profileLoading || saving}
+              disabled={!isOwner || profileLoading || saving}
               placeholder={t("namePlaceholder")}
             />
             <p className="text-xs text-muted-foreground">{t("nameDesc")}</p>
-            {!canEditSettings && (
+            {!isOwner && (
               <p className="text-xs text-muted-foreground">
                 {t("adminOnlyHint")}
               </p>
             )}
           </div>
 
-          {canEditSettings && (
+          {isOwner && (
             <Button
               onClick={handleSave}
               disabled={saving || !dirty}

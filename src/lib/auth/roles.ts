@@ -139,3 +139,25 @@ export function canTransferOwnership(role: AccountRole): boolean {
 export function canDeleteConversation(role: AccountRole): boolean {
   return role === "owner";
 }
+
+/**
+ * Owner only: the five settings sections that control WHO can reach
+ * the account and WHAT it's connected to, rather than day-to-day
+ * workspace config: Brand, WhatsApp connection, Ad accounts, Team
+ * members, API keys. Narrower than `canEditSettings` (admin+) on
+ * purpose — for an agency running one deployment per several client
+ * accounts, the agency holds `owner` and the client's own staff hold
+ * `admin`; these five are exactly the surfaces where an admin
+ * shouldn't be able to swap credentials or add/remove teammates out
+ * from under the agency.
+ *
+ * Mirrored server-side by migration 047: RLS on api_keys, ad_accounts,
+ * whatsapp_config, and account_invitations now requires owner (not
+ * admin+); accounts.brand_name/logo_url lose their UPDATE grant on the
+ * authenticated role entirely. This predicate alone only gates the UI
+ * — see /api/account/brand, /api/whatsapp/config, and the owner
+ * bumps across the ads/account API routes for the actual boundary.
+ */
+export function canEditOwnerSettings(role: AccountRole): boolean {
+  return role === "owner";
+}

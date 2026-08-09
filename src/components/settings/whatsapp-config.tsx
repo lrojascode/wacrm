@@ -46,7 +46,7 @@ export function WhatsAppConfig() {
   // context and key every read off it — so a teammate who just
   // joined an account sees the inviter's saved config without
   // having to re-enter anything.
-  const { user, accountId, loading: authLoading, profileLoading } = useAuth();
+  const { user, accountId, isOwner, loading: authLoading, profileLoading } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -412,7 +412,7 @@ export function WhatsAppConfig() {
                 </AlertDescription>
                 <Button
                   onClick={handleReset}
-                  disabled={resetting}
+                  disabled={resetting || !isOwner}
                   size="sm"
                   className="mt-3 bg-amber-600 hover:bg-amber-700 text-white"
                 >
@@ -571,6 +571,7 @@ export function WhatsAppConfig() {
                 placeholder="e.g. 100234567890123"
                 value={phoneNumberId}
                 onChange={(e) => setPhoneNumberId(e.target.value)}
+                disabled={!isOwner}
                 className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
               />
             </div>
@@ -581,6 +582,7 @@ export function WhatsAppConfig() {
                 placeholder="e.g. 100234567890456"
                 value={wabaId}
                 onChange={(e) => setWabaId(e.target.value)}
+                disabled={!isOwner}
                 className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
               />
             </div>
@@ -602,6 +604,7 @@ export function WhatsAppConfig() {
                       setTokenEdited(true);
                     }
                   }}
+                  disabled={!isOwner}
                   className="bg-muted border-border text-foreground placeholder:text-muted-foreground pr-10"
                 />
                 <button
@@ -625,6 +628,7 @@ export function WhatsAppConfig() {
                 placeholder={t('webhookVerifyTokenPlaceholder')}
                 value={verifyToken}
                 onChange={(e) => setVerifyToken(e.target.value)}
+                disabled={!isOwner}
                 className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
               />
               <p className="text-xs text-muted-foreground">
@@ -646,6 +650,7 @@ export function WhatsAppConfig() {
                 onChange={(e) =>
                   setPin(e.target.value.replace(/\D/g, '').slice(0, 6))
                 }
+                disabled={!isOwner}
                 className="bg-muted border-border text-foreground placeholder:text-muted-foreground tracking-widest"
               />
               <p className="text-xs text-muted-foreground leading-relaxed">
@@ -697,7 +702,7 @@ export function WhatsAppConfig() {
         <div className="flex flex-wrap gap-3">
           <Button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !isOwner}
             className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {saving ? (
@@ -727,7 +732,7 @@ export function WhatsAppConfig() {
               </>
             )}
           </Button>
-          {config && (
+          {config && isOwner && (
             <Button
               variant="outline"
               onClick={handleReset}

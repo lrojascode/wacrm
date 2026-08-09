@@ -57,7 +57,7 @@ const MAX_LABEL_LEN = 80;
 
 export async function GET() {
   try {
-    const ctx = await requireRole("admin");
+    const ctx = await requireRole("owner");
 
     const { data, error } = await ctx.supabase
       .from("account_invitations")
@@ -85,7 +85,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const ctx = await requireRole("admin");
+    const ctx = await requireRole("owner");
 
     // 30/min per user. The Members tab is a clicks-only UI so any
     // legitimate admin is far below this; the cap exists to keep

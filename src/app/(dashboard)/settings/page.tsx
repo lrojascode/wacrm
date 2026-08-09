@@ -21,7 +21,9 @@ import { AdsSettings } from '@/components/settings/ads-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import {
+  DEFAULT_SECTION,
   resolveSection,
+  SECTION_META,
   type SettingsSection,
 } from '@/components/settings/settings-sections';
 
@@ -44,7 +46,7 @@ export default function SettingsPage() {
 function SettingsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { defaultCurrency } = useAuth();
+  const { defaultCurrency, isOwner, profileLoading } = useAuth();
   const { mode } = useTheme();
   const t = useTranslations('Settings');
 
@@ -52,7 +54,18 @@ function SettingsPageInner() {
   // section — deep-linkable, and it keeps the existing links in the
   // app sidebar/header working. Legacy tab values (tags, custom-fields)
   // resolve onto their new home; unknown/empty → the Overview landing.
-  const section = resolveSection(searchParams.get('tab'));
+  const requestedSection = resolveSection(searchParams.get('tab'));
+
+  // The rail already hides owner-only items from non-owners, but a
+  // direct/deep link (`?tab=members`) still has to be blocked here —
+  // otherwise hiding the menu item would be security theater. Fails
+  // closed while the role is still resolving, same as <RequireRole>,
+  // and falls back to Overview rather than an error page — identical
+  // to how an unknown `?tab=` value already behaves.
+  const section: SettingsSection =
+    SECTION_META[requestedSection].ownerOnly && !(!profileLoading && isOwner)
+      ? DEFAULT_SECTION
+      : requestedSection;
 
   const go = (next: SettingsSection) => {
     const params = new URLSearchParams(searchParams.toString());
