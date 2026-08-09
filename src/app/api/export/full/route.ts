@@ -7,7 +7,8 @@
 // deals (with pipeline/stage names, status, value, closed_at), and
 // full message history (all content_types: text, audio, image, video, etc.).
 //
-// Paginated internally by contact batches and streamed as a ReadableStream.
+// Paginated internally using keyset cursors and streamed via ReadableStream.
+// All sub-queries pass through fetchAllPages to prevent PostgREST 1000-row limits.
 // Gated by requireRole('owner') — returns 403 for admin and other roles.
 // ============================================================
 
@@ -15,6 +16,8 @@ import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/account/admin-client';
+import { fetchAllPages } from '@/lib/export/paginate';
+import { keysetFilter, type Cursor } from '@/lib/api/v1/pagination';
 
 const BATCH_SIZE = 50;
 
@@ -23,81 +26,105 @@ export async function GET() {
     const ctx = await requireRole('owner');
     const admin = supabaseAdmin();
 
-    // 1. Pre-fetch ad campaigns mapping for attribution resolution
-    const { data: campaigns } = await admin
-      .from('ad_campaigns')
-      .select('id, external_id, name')
-      .eq('account_id', ctx.accountId);
+    // 1. Pre-fetch ad campaigns mapping for attribution resolution with fetchAllPages
+    const campaigns = await fetchAllPages<{ id: string; external_id: string | null; name: string }>(
+      (from, to) =>
+        admin
+          .from('ad_campaigns')
+          .select('id, external_id, name')
+          .eq('account_id', ctx.accountId)
+          .range(from, to),
+    );
 
     const campaignMap = new Map<string, string>();
-    if (campaigns) {
-      for (const c of campaigns) {
-        if (c.id) campaignMap.set(c.id, c.name);
-        if (c.external_id) campaignMap.set(c.external_id, c.name);
-      }
+    for (const c of campaigns) {
+      if (c.id) campaignMap.set(c.id, c.name);
+      if (c.external_id) campaignMap.set(c.external_id, c.name);
     }
 
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
       async start(controller) {
-        try {
-          let offset = 0;
-          let hasMore = true;
+        let lastCursor: Cursor | null = null;
+        let hasMore = true;
 
+        try {
           while (hasMore) {
-            // Fetch batch of contacts
-            const { data: contacts, error: contactsErr } = await admin
+            // Keyset pagination over contacts: (created_at DESC, id DESC)
+            let q = admin
               .from('contacts')
               .select('*')
               .eq('account_id', ctx.accountId)
               .order('created_at', { ascending: false })
-              .range(offset, offset + BATCH_SIZE - 1);
+              .order('id', { ascending: false })
+              .limit(BATCH_SIZE);
 
-            if (contactsErr || !contacts || contacts.length === 0) {
+            const filter = keysetFilter(lastCursor);
+            if (filter) {
+              q = q.or(filter);
+            }
+
+            const { data: contacts, error: contactsErr } = await q;
+
+            if (contactsErr) {
+              controller.error(contactsErr);
+              return;
+            }
+
+            if (!contacts || contacts.length === 0) {
               hasMore = false;
               break;
             }
 
+            // Update cursor from last contact in batch
+            const lastContact = contacts[contacts.length - 1];
+            lastCursor = { createdAt: lastContact.created_at, id: lastContact.id };
+
             const contactIds = contacts.map((c) => c.id);
 
-            // Fetch related data in parallel for the batch
-            const [
-              { data: contactTags },
-              { data: customValues },
-              { data: deals },
-              { data: conversations },
-            ] = await Promise.all([
-              admin
-                .from('contact_tags')
-                .select('contact_id, tags(id, name, color)')
-                .in('contact_id', contactIds),
-              admin
-                .from('contact_custom_values')
-                .select('contact_id, value, custom_fields(field_name, field_type)')
-                .in('contact_id', contactIds),
-              admin
-                .from('deals')
-                .select(
-                  'id, contact_id, title, value, currency, status, closed_at, created_at, updated_at, pipelines(name), pipeline_stages(name)',
-                )
-                .in('contact_id', contactIds),
-              admin
-                .from('conversations')
-                .select('id, contact_id, status, unread_count, created_at, updated_at')
-                .in('contact_id', contactIds),
+            // Fetch related data in parallel for the batch, using fetchAllPages to avoid 1000-row limits
+            const [contactTags, customValues, deals, conversations] = await Promise.all([
+              fetchAllPages((from, to) =>
+                admin
+                  .from('contact_tags')
+                  .select('contact_id, tags(id, name, color)')
+                  .in('contact_id', contactIds)
+                  .range(from, to),
+              ),
+              fetchAllPages((from, to) =>
+                admin
+                  .from('contact_custom_values')
+                  .select('contact_id, value, custom_fields(field_name, field_type)')
+                  .in('contact_id', contactIds)
+                  .range(from, to),
+              ),
+              fetchAllPages((from, to) =>
+                admin
+                  .from('deals')
+                  .select(
+                    'id, contact_id, title, value, currency, status, closed_at, created_at, updated_at, pipelines(name), pipeline_stages(name)',
+                  )
+                  .in('contact_id', contactIds)
+                  .range(from, to),
+              ),
+              fetchAllPages((from, to) =>
+                admin
+                  .from('conversations')
+                  .select('id, contact_id, status, unread_count, created_at, updated_at')
+                  .in('contact_id', contactIds)
+                  .range(from, to),
+              ),
             ]);
 
             // Index tags by contact_id
             const tagsByContact = new Map<string, Array<{ id: string; name: string; color: string }>>();
-            if (contactTags) {
-              for (const ct of contactTags) {
-                const tagObj = (ct as unknown as { tags?: { id: string; name: string; color: string } | null }).tags;
-                if (tagObj) {
-                  const existing = tagsByContact.get(ct.contact_id) || [];
-                  existing.push({ id: tagObj.id, name: tagObj.name, color: tagObj.color });
-                  tagsByContact.set(ct.contact_id, existing);
-                }
+            for (const ct of contactTags) {
+              const tagObj = (ct as unknown as { tags?: { id: string; name: string; color: string } | null }).tags;
+              if (tagObj) {
+                const existing = tagsByContact.get(ct.contact_id) || [];
+                existing.push({ id: tagObj.id, name: tagObj.name, color: tagObj.color });
+                tagsByContact.set(ct.contact_id, existing);
               }
             }
 
@@ -106,70 +133,66 @@ export async function GET() {
               string,
               Array<{ field_name: string; field_type: string; value: string | null }>
             >();
-            if (customValues) {
-              for (const cv of customValues) {
-                const fieldObj = (cv as unknown as { custom_fields?: { field_name: string; field_type: string } | null }).custom_fields;
-                if (fieldObj) {
-                  const existing = customValuesByContact.get(cv.contact_id) || [];
-                  existing.push({
-                    field_name: fieldObj.field_name,
-                    field_type: fieldObj.field_type,
-                    value: cv.value,
-                  });
-                  customValuesByContact.set(cv.contact_id, existing);
-                }
+            for (const cv of customValues) {
+              const fieldObj = (cv as unknown as { custom_fields?: { field_name: string; field_type: string } | null }).custom_fields;
+              if (fieldObj) {
+                const existing = customValuesByContact.get(cv.contact_id) || [];
+                existing.push({
+                  field_name: fieldObj.field_name,
+                  field_type: fieldObj.field_type,
+                  value: cv.value,
+                });
+                customValuesByContact.set(cv.contact_id, existing);
               }
             }
 
             // Index deals by contact_id
             const dealsByContact = new Map<string, Array<Record<string, unknown>>>();
-            if (deals) {
-              for (const d of deals) {
-                const pipelineObj = (d as unknown as { pipelines?: { name?: string } | null }).pipelines;
-                const stageObj = (d as unknown as { pipeline_stages?: { name?: string } | null }).pipeline_stages;
-                const dealRecord = {
-                  id: d.id,
-                  title: d.title,
-                  value: d.value,
-                  currency: d.currency,
-                  status: d.status,
-                  closed_at: d.closed_at,
-                  pipeline_name: pipelineObj?.name || null,
-                  stage_name: stageObj?.name || null,
-                  created_at: d.created_at,
-                  updated_at: d.updated_at,
-                };
-                const existing = dealsByContact.get(d.contact_id) || [];
-                existing.push(dealRecord);
-                dealsByContact.set(d.contact_id, existing);
-              }
+            for (const d of deals) {
+              const pipelineObj = (d as unknown as { pipelines?: { name?: string } | null }).pipelines;
+              const stageObj = (d as unknown as { pipeline_stages?: { name?: string } | null }).pipeline_stages;
+              const dealRecord = {
+                id: d.id,
+                title: d.title,
+                value: d.value,
+                currency: d.currency,
+                status: d.status,
+                closed_at: d.closed_at,
+                pipeline_name: pipelineObj?.name || null,
+                stage_name: stageObj?.name || null,
+                created_at: d.created_at,
+                updated_at: d.updated_at,
+              };
+              const existing = dealsByContact.get(d.contact_id) || [];
+              existing.push(dealRecord);
+              dealsByContact.set(d.contact_id, existing);
             }
 
             // Index conversation by contact_id and collect conversation_ids for messages fetch
             const convByContact = new Map<string, Record<string, unknown>>();
             const convIds: string[] = [];
-            if (conversations) {
-              for (const conv of conversations) {
-                convByContact.set(conv.contact_id, conv);
-                convIds.push(conv.id);
-              }
+            for (const conv of conversations) {
+              convByContact.set(conv.contact_id, conv);
+              convIds.push(conv.id);
             }
 
-            // Fetch ALL messages for this batch's conversations without filtering content_type
+            // Fetch ALL messages for this batch's conversations (paginated using fetchAllPages)
             const messagesByConv = new Map<string, Array<Record<string, unknown>>>();
             if (convIds.length > 0) {
-              const { data: messages } = await admin
-                .from('messages')
-                .select('*')
-                .in('conversation_id', convIds)
-                .order('created_at', { ascending: true });
+              const messages = await fetchAllPages<Record<string, unknown>>((from, to) =>
+                admin
+                  .from('messages')
+                  .select('*')
+                  .in('conversation_id', convIds)
+                  .order('created_at', { ascending: true })
+                  .range(from, to),
+              );
 
-              if (messages) {
-                for (const m of messages) {
-                  const existing = messagesByConv.get(m.conversation_id) || [];
-                  existing.push(m);
-                  messagesByConv.set(m.conversation_id, existing);
-                }
+              for (const m of messages) {
+                const convId = m.conversation_id as string;
+                const existing = messagesByConv.get(convId) || [];
+                existing.push(m);
+                messagesByConv.set(convId, existing);
               }
             }
 
@@ -223,14 +246,13 @@ export async function GET() {
 
             if (contacts.length < BATCH_SIZE) {
               hasMore = false;
-            } else {
-              offset += BATCH_SIZE;
             }
           }
-        } catch (streamErr) {
-          console.error('[GET /api/export/full] streaming error:', streamErr);
-        } finally {
+
           controller.close();
+        } catch (streamErr) {
+          console.error('[GET /api/export/full] stream error:', streamErr);
+          controller.error(streamErr);
         }
       },
     });

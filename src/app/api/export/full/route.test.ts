@@ -51,7 +51,8 @@ describe('GET /api/export/full', () => {
         if (table === 'ad_campaigns') {
           return {
             select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            eq: vi.fn().mockReturnThis(),
+            range: vi.fn().mockResolvedValue({ data: [], error: null }),
           };
         }
         if (table === 'contacts') {
@@ -59,7 +60,7 @@ describe('GET /api/export/full', () => {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
             order: vi.fn().mockReturnThis(),
-            range: vi.fn().mockResolvedValue({
+            limit: vi.fn().mockResolvedValue({
               data: [
                 {
                   id: 'c-1',
@@ -84,25 +85,29 @@ describe('GET /api/export/full', () => {
         if (table === 'contact_tags') {
           return {
             select: vi.fn().mockReturnThis(),
-            in: vi.fn().mockResolvedValue({ data: [], error: null }),
+            in: vi.fn().mockReturnThis(),
+            range: vi.fn().mockResolvedValue({ data: [], error: null }),
           };
         }
         if (table === 'contact_custom_values') {
           return {
             select: vi.fn().mockReturnThis(),
-            in: vi.fn().mockResolvedValue({ data: [], error: null }),
+            in: vi.fn().mockReturnThis(),
+            range: vi.fn().mockResolvedValue({ data: [], error: null }),
           };
         }
         if (table === 'deals') {
           return {
             select: vi.fn().mockReturnThis(),
-            in: vi.fn().mockResolvedValue({ data: [], error: null }),
+            in: vi.fn().mockReturnThis(),
+            range: vi.fn().mockResolvedValue({ data: [], error: null }),
           };
         }
         if (table === 'conversations') {
           return {
             select: vi.fn().mockReturnThis(),
-            in: vi.fn().mockResolvedValue({
+            in: vi.fn().mockReturnThis(),
+            range: vi.fn().mockResolvedValue({
               data: [
                 {
                   id: 'conv-1',
@@ -121,7 +126,8 @@ describe('GET /api/export/full', () => {
           return {
             select: vi.fn().mockReturnThis(),
             in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockResolvedValue({
+            order: vi.fn().mockReturnThis(),
+            range: vi.fn().mockResolvedValue({
               data: [
                 {
                   id: 'msg-1',
@@ -150,5 +156,42 @@ describe('GET /api/export/full', () => {
     expect(text).toContain('Bob');
     expect(text).toContain('voice.ogg');
     expect(text).toContain('audio');
+  });
+
+  it('aborts stream on database error during export', async () => {
+    mocks.requireRole.mockResolvedValue(context);
+
+    const mockAdmin = {
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'ad_campaigns') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            range: vi.fn().mockResolvedValue({ data: [], error: null }),
+          };
+        }
+        if (table === 'contacts') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            or: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockResolvedValue({
+              data: null,
+              error: new Error('Database failure mid-stream'),
+            }),
+          };
+        }
+        return {};
+      }),
+    };
+    mocks.supabaseAdmin.mockReturnValue(mockAdmin);
+
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(response.body).toBeDefined();
+
+    // Reading stream should reject due to controller.error
+    await expect(response.text()).rejects.toThrow();
   });
 });
