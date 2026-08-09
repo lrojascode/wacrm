@@ -39,6 +39,18 @@ export interface ParseContactCsvResult {
   hasCompanyColumn: boolean;
 }
 
+function cleanCell(val: string | undefined): string {
+  if (!val) return '';
+  let str = val.trim();
+  if (str.startsWith('"') && str.endsWith('"') && str.length >= 2) {
+    str = str.slice(1, -1).replace(/""/g, '"').trim();
+  }
+  if (str.startsWith("'")) {
+    str = str.slice(1);
+  }
+  return str;
+}
+
 export function parseContactCsv(text: string): ParseContactCsvResult {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) {
@@ -47,7 +59,7 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
 
   const headers = lines[0]
     .split(',')
-    .map((h) => h.trim().toLowerCase().replace(/["']/g, ''));
+    .map((h) => cleanCell(h).toLowerCase());
 
   const phoneIdx = headers.indexOf('phone');
   if (phoneIdx === -1) {
@@ -66,25 +78,15 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
     if (!line) continue;
 
     const values = parseCsvLine(line);
-    const phone = values[phoneIdx]?.replace(/["']/g, '').trim();
+    const phone = cleanCell(values[phoneIdx]);
     if (!phone) continue;
 
     rows.push({
       phone,
-      name:
-        nameIdx >= 0
-          ? values[nameIdx]?.replace(/["']/g, '').trim() || undefined
-          : undefined,
-      email:
-        emailIdx >= 0
-          ? values[emailIdx]?.replace(/["']/g, '').trim() || undefined
-          : undefined,
-      company:
-        companyIdx >= 0
-          ? values[companyIdx]?.replace(/["']/g, '').trim() || undefined
-          : undefined,
-      tagNames:
-        tagsIdx >= 0 ? parseTagCell(values[tagsIdx]?.replace(/["']/g, '')) : [],
+      name: nameIdx >= 0 ? cleanCell(values[nameIdx]) || undefined : undefined,
+      email: emailIdx >= 0 ? cleanCell(values[emailIdx]) || undefined : undefined,
+      company: companyIdx >= 0 ? cleanCell(values[companyIdx]) || undefined : undefined,
+      tagNames: tagsIdx >= 0 ? parseTagCell(cleanCell(values[tagsIdx])) : [],
     });
   }
 
