@@ -27,6 +27,16 @@
 -- same mechanism migration 027 already uses to let any member UPDATE
 -- `notifications.read_at` but nothing else.
 --
+-- LOCAL DEV NOTE: `supabase db reset` re-applies the CLI's own
+-- baseline `GRANT ALL ON ALL TABLES IN SCHEMA public` to
+-- authenticated/anon/service_role AFTER replaying every migration —
+-- that's supabase-cli's own safety net, unrelated to this file, and
+-- it silently re-widens the REVOKE/GRANT below back to every column.
+-- Production is unaffected: this bundle is pasted into the Supabase
+-- Cloud SQL editor once (see docs/deploy/) and nothing runs after it.
+-- To test the narrower grant locally after a `db reset`, re-run
+-- section 5 below by hand as the last statement.
+--
 -- Idempotent — safe to re-run.
 -- ============================================================
 

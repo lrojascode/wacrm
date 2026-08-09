@@ -78,7 +78,7 @@ WHERE user_id = '11111111-1111-1111-1111-111111111111';
 -- Use exactly that key in .env.local for local development. (In
 -- production the key is a real secret and this row does not exist.)
 INSERT INTO whatsapp_config (
-  user_id, account_id, phone_number_id, waba_id, access_token, status
+  user_id, account_id, phone_number_id, waba_id, access_token, status, webhook_token
 )
 SELECT
   '11111111-1111-1111-1111-111111111111',
@@ -86,7 +86,10 @@ SELECT
   '999888777',
   'WABA_TEST',
   '070707070707070707070707:6f9fac071a9bbe264ee118b8d2ff:2a79c2a52a59fdd9e64e0ccb8227e5cd',
-  'connected'
+  'connected',
+  -- Required NOT NULL as of migration 044 (per-account webhook URL
+  -- token). Fixed dev value, unique within this single-row seed.
+  'devseedwebhooktoken0000000000000'
 FROM accounts a
 WHERE a.owner_user_id = '11111111-1111-1111-1111-111111111111'
 ON CONFLICT (phone_number_id) DO NOTHING;
