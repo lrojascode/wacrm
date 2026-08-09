@@ -48,6 +48,8 @@ describe("resolveBrand", () => {
       title: DEFAULT_BRAND_TITLE,
       logoUrl: null,
       isCustom: false,
+      displayMode: "both",
+      logoSize: "sm",
     });
     expect(resolveBrand({ brand_name: null, logo_url: null }).title).toBe(
       DEFAULT_BRAND_TITLE,
@@ -70,6 +72,19 @@ describe("resolveBrand", () => {
     expect(brand.title).toBe("Acme");
     expect(brand.logoUrl).toContain("b.png");
     expect(brand.isCustom).toBe(true);
+    expect(brand.displayMode).toBe("both");
+    expect(brand.logoSize).toBe("sm");
+  });
+
+  it("returns configured displayMode and logoSize", () => {
+    const brand = resolveBrand({
+      brand_name: "Acme",
+      logo_url: "https://x/logo.png",
+      brand_display_mode: "logo",
+      brand_logo_size: "lg",
+    });
+    expect(brand.displayMode).toBe("logo");
+    expect(brand.logoSize).toBe("lg");
   });
 
   it("treats an empty logo_url as no logo", () => {

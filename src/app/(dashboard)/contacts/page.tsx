@@ -39,6 +39,7 @@ import {
   Search,
   Plus,
   Upload,
+  Download,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -55,6 +56,7 @@ import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
+import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
 import { SOURCE_PICKER_ORDER } from '@/lib/attribution/sources';
@@ -71,6 +73,7 @@ export default function ContactsPage() {
   // and the filter can't drift apart.
   const tSources = useTranslations('Contacts.detailView.source.options');
   const supabase = createClient();
+  const { isOwner } = useAuth();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
 
@@ -384,6 +387,23 @@ export default function ContactsPage() {
             <Upload className="size-4" />
             {t('importBtn')}
           </GatedButton>
+          {isOwner && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                const a = document.createElement('a');
+                a.href = '/api/contacts/export';
+                a.download = 'contacts-export.csv';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              }}
+              className="border-border text-muted-foreground hover:bg-muted"
+            >
+              <Download className="size-4" />
+              {t('exportBtn')}
+            </Button>
+          )}
           <GatedButton
             canAct={canEdit}
             gateReason="add or import contacts"

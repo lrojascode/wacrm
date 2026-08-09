@@ -28,7 +28,12 @@ export async function PUT(request: Request) {
     const ctx = await requireRole('owner')
 
     const body = (await request.json().catch(() => null)) as
-      | { name?: unknown; logo_url?: unknown }
+      | {
+          name?: unknown
+          logo_url?: unknown
+          brand_display_mode?: unknown
+          brand_logo_size?: unknown
+        }
       | null
 
     const rawName = typeof body?.name === 'string' ? body.name : ''
@@ -44,11 +49,7 @@ export async function PUT(request: Request) {
     // null means "remove it", a string means "set it". Distinguish
     // omitted from null via `in`, the same way PUT /api/whatsapp/meta-app
     // does for its optional fields.
-    const update: Record<string, unknown> = {
-      // `name` is NOT NULL on accounts — fall back to the current
-      // value (fetched below) rather than writing an empty string,
-      // mirroring brand-settings.tsx's prior client-side behavior.
-    }
+    const update: Record<string, unknown> = {}
     if (body && 'logo_url' in body) {
       const raw = body.logo_url
       if (raw === null) {
@@ -58,6 +59,30 @@ export async function PUT(request: Request) {
       } else {
         return NextResponse.json(
           { error: 'logo_url must be an http(s) URL, or null to remove it' },
+          { status: 400 },
+        )
+      }
+    }
+
+    if (body && 'brand_display_mode' in body) {
+      const mode = body.brand_display_mode
+      if (mode === 'logo' || mode === 'text' || mode === 'both') {
+        update.brand_display_mode = mode
+      } else {
+        return NextResponse.json(
+          { error: 'brand_display_mode must be "logo", "text", or "both"' },
+          { status: 400 },
+        )
+      }
+    }
+
+    if (body && 'brand_logo_size' in body) {
+      const size = body.brand_logo_size
+      if (size === 'sm' || size === 'md' || size === 'lg') {
+        update.brand_logo_size = size
+      } else {
+        return NextResponse.json(
+          { error: 'brand_logo_size must be "sm", "md", or "lg"' },
           { status: 400 },
         )
       }
@@ -80,7 +105,7 @@ export async function PUT(request: Request) {
       .from('accounts')
       .update(update)
       .eq('id', ctx.accountId)
-      .select('name, brand_name, logo_url')
+      .select('name, brand_name, logo_url, brand_display_mode, brand_logo_size')
       .single()
 
     if (error) {

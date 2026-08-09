@@ -72,6 +72,8 @@ describe("getBrand", () => {
       title: "Acme",
       logoUrl: "https://x/logo.png",
       isCustom: true,
+      displayMode: "both",
+      logoSize: "sm",
     });
   });
 
@@ -88,6 +90,8 @@ describe("getBrand", () => {
       title: DEFAULT_BRAND_TITLE,
       logoUrl: null,
       isCustom: false,
+      displayMode: "both",
+      logoSize: "sm",
     });
   });
 
@@ -117,6 +121,8 @@ describe("getBrand", () => {
       title: DEFAULT_BRAND_TITLE,
       logoUrl: null,
       isCustom: false,
+      displayMode: "both",
+      logoSize: "sm",
     });
   });
 

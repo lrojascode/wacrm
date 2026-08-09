@@ -3,17 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ImagePlus, Loader2, Sparkles, Trash2 } from "lucide-react";
+import { ImagePlus, Loader2, MessageSquare, Sparkles, Trash2 } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
 import {
   BRAND_BUCKET,
+  BRAND_LOGO_SIZES,
+  DEFAULT_BRAND_TITLE,
   LOGO_ACCEPT,
   LOGO_MIME,
   MAX_BRAND_NAME_LEN,
   MAX_LOGO_BYTES,
   normalizeBrandName,
   parseBrandAssetPath,
+  type BrandDisplayMode,
+  type BrandLogoSize,
 } from "@/lib/branding/brand";
 import {
   deleteAccountMedia,
@@ -31,33 +35,10 @@ import {
 } from "@/components/ui/card";
 import { useTranslations } from "next-intl";
 import { SettingsPanelHead } from "./settings-panel-head";
+import { cn } from "@/lib/utils";
 
 /**
- * Brand settings — the account's own name and logo.
- *
- * This is what makes one deployment serve several client accounts
- * without each of them seeing the generic product mark: the name and
- * logo saved here replace the sidebar header and the browser tab
- * (title + favicon) for everyone in the account.
- *
- * One visible name field writes BOTH `accounts.name` and
- * `accounts.brand_name`. Splitting them into two inputs would show a
- * client two nearly identical "name" boxes with no way to tell which
- * one matters. `name` stays the identity used by invitations and the
- * members list; `brand_name` doubles as the "this account opted into
- * branding" flag that the server needs — it cannot run the client's
- * "is this name just the user's own name?" heuristic.
- *
- * The logo file itself is still uploaded client-side straight to
- * Storage (`uploadAccountMedia`); the `brand-assets` bucket's RLS
- * policies (043, tightened to owner-only by 047) gate that write.
- * Persisting the resulting URL — and the name — goes through
- * `/api/account/brand` (owner-only): migration 047 revokes UPDATE on
- * `accounts.brand_name` / `logo_url` from the authenticated role
- * entirely, so even the owner's own session can no longer write those
- * columns directly. Non-owners see a disabled, read-only view here,
- * gated by `isOwner` client-side as a UX nicety — the API
- * route and the storage policy are the actual boundary.
+ * Brand settings — the account's own name, logo, display mode, and logo size.
  */
 export function BrandSettings() {
   const router = useRouter();
@@ -72,25 +53,40 @@ export function BrandSettings() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const savedName = account?.brand_name ?? account?.name ?? "";
+  const savedLogo = account?.logo_url ?? null;
+  const savedDisplayMode: BrandDisplayMode =
+    account?.brand_display_mode === "logo" ||
+    account?.brand_display_mode === "text" ||
+    account?.brand_display_mode === "both"
+      ? account.brand_display_mode
+      : "both";
+  const savedLogoSize: BrandLogoSize =
+    account?.brand_logo_size === "sm" ||
+    account?.brand_logo_size === "md" ||
+    account?.brand_logo_size === "lg"
+      ? account.brand_logo_size
+      : "sm";
+
   const [name, setName] = useState("");
+  const [displayMode, setDisplayMode] = useState<BrandDisplayMode>("both");
+  const [logoSize, setLogoSize] = useState<BrandLogoSize>("sm");
   const [pendingLogo, setPendingLogo] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [removeLogo, setRemoveLogo] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const savedName = account?.brand_name ?? account?.name ?? "";
-  const savedLogo = account?.logo_url ?? null;
-
-  // Re-seed once the profile resolves, and after a save round-trips
-  // through refreshProfile.
+  // Re-seed once profile resolves or saved values change
   useEffect(() => {
     setName(savedName);
+    setDisplayMode(savedDisplayMode);
+    setLogoSize(savedLogoSize);
     setPendingLogo(null);
     setPreviewUrl(null);
     setRemoveLogo(false);
-  }, [savedName, savedLogo]);
+  }, [savedName, savedLogo, savedDisplayMode, savedLogoSize]);
 
-  // Release object URLs so a few logo previews don't leak the files.
+  // Release object URLs so a few logo previews don't leak files
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -100,17 +96,16 @@ export function BrandSettings() {
   const shownLogo = previewUrl ?? (removeLogo ? null : savedLogo);
   const dirty =
     normalizeBrandName(name) !== normalizeBrandName(savedName) ||
+    displayMode !== savedDisplayMode ||
+    logoSize !== savedLogoSize ||
     pendingLogo !== null ||
     removeLogo;
 
   function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ""; // reset so the same file can be re-picked
+    e.target.value = "";
     if (!file) return;
 
-    // Checked here, before the upload starts, because the bucket
-    // rejects on the same rules — but only after the bytes are on the
-    // wire and with an error the user cannot act on.
     if (!(LOGO_MIME as readonly string[]).includes(file.type)) {
       toast.error(t("unsupportedImage"));
       return;
@@ -138,8 +133,6 @@ export function BrandSettings() {
     setSaving(true);
 
     try {
-      // Upload first: if this fails we haven't touched the row yet, so
-      // the account keeps the logo it already had.
       let nextLogoUrl = savedLogo;
       if (pendingLogo) {
         const { publicUrl } = await uploadAccountMedia(
@@ -153,18 +146,14 @@ export function BrandSettings() {
 
       const brandName = normalizeBrandName(name);
 
-      // accounts.brand_name / logo_url are unreachable through the
-      // user's own session as of migration 047 — even the owner now
-      // writes them through this owner-gated route, whose service-role
-      // client is the only remaining path. `name` is NOT NULL, so an
-      // emptied field reverts server-side to whatever it already was
-      // rather than failing the write.
       const res = await fetch("/api/account/brand", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: brandName ?? savedName ?? "",
           logo_url: nextLogoUrl,
+          brand_display_mode: displayMode,
+          brand_logo_size: logoSize,
         }),
       });
 
@@ -174,12 +163,6 @@ export function BrandSettings() {
         return;
       }
 
-      // Only now that the row points elsewhere is the old object safe
-      // to delete. Doing it first would leave a dead URL behind if the
-      // update failed. Best-effort: the bucket is public, so a
-      // customer who removes their logo expects the file to stop being
-      // reachable, but a missed delete is a storage nit, not something
-      // to fail the save over.
       if (savedLogo && savedLogo !== nextLogoUrl) {
         const stalePath = parseBrandAssetPath(savedLogo);
         if (stalePath) {
@@ -187,20 +170,20 @@ export function BrandSettings() {
         }
       }
 
-      // refreshProfile updates the sidebar; router.refresh re-runs the
-      // dashboard layout's generateMetadata so the tab title and
-      // favicon change too, without a full reload.
       await refreshProfile();
       router.refresh();
       toast.success(t("saveSuccess"));
     } catch (err) {
-      // uploadAccountMedia throws a user-facing message (not signed
-      // in, account unresolved, storage rejected the object).
       toast.error(err instanceof Error ? err.message : t("saveFailed"));
     } finally {
       setSaving(false);
     }
   }
+
+  const previewConfig = BRAND_LOGO_SIZES[logoSize] || BRAND_LOGO_SIZES.sm;
+  const previewTitle = name.trim() || DEFAULT_BRAND_TITLE;
+  const showPreviewLogo = displayMode === "logo" || displayMode === "both";
+  const showPreviewText = displayMode === "text" || displayMode === "both";
 
   return (
     <section className="max-w-2xl animate-in fade-in-50 duration-200">
@@ -281,12 +264,88 @@ export function BrandSettings() {
               placeholder={t("namePlaceholder")}
             />
             <p className="text-xs text-muted-foreground">{t("nameDesc")}</p>
-            {!isOwner && (
-              <p className="text-xs text-muted-foreground">
-                {t("adminOnlyHint")}
-              </p>
-            )}
           </div>
+
+          {/* Display Mode & Logo Size */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground" htmlFor="brand-display-mode">
+                {t("displayMode")}
+              </Label>
+              <select
+                id="brand-display-mode"
+                value={displayMode}
+                onChange={(e) => setDisplayMode(e.target.value as BrandDisplayMode)}
+                disabled={!isOwner || profileLoading || saving}
+                className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="both">{t("displayModeBoth")}</option>
+                <option value="logo">{t("displayModeLogo")}</option>
+                <option value="text">{t("displayModeText")}</option>
+              </select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground" htmlFor="brand-logo-size">
+                {t("logoSize")}
+              </Label>
+              <select
+                id="brand-logo-size"
+                value={logoSize}
+                onChange={(e) => setLogoSize(e.target.value as BrandLogoSize)}
+                disabled={!isOwner || profileLoading || saving}
+                className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="sm">{t("logoSizeSm")}</option>
+                <option value="md">{t("logoSizeMd")}</option>
+                <option value="lg">{t("logoSizeLg")}</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Live Preview */}
+          <div className="grid gap-2">
+            <Label className="text-muted-foreground">{t("preview")}</Label>
+            <div className="w-60 rounded-xl border border-border bg-card p-2 shadow-sm">
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-2 rounded-lg border border-border/50 bg-background px-3 transition-all",
+                  previewConfig.container,
+                )}
+              >
+                {showPreviewLogo && (
+                  shownLogo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={shownLogo}
+                      alt=""
+                      className={cn("shrink-0 rounded-lg object-contain", previewConfig.logo)}
+                    />
+                  ) : (
+                    <div
+                      className={cn(
+                        "flex shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground",
+                        previewConfig.logo,
+                      )}
+                    >
+                      <MessageSquare className={previewConfig.icon} />
+                    </div>
+                  )
+                )}
+                {showPreviewText && (
+                  <span className="truncate text-sm font-semibold text-foreground">
+                    {previewTitle}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {!isOwner && (
+            <p className="text-xs text-muted-foreground">
+              {t("adminOnlyHint")}
+            </p>
+          )}
 
           {isOwner && (
             <Button

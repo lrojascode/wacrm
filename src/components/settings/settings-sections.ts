@@ -1,5 +1,6 @@
 import {
   Coins,
+  Download,
   FileText,
   KeyRound,
   LayoutGrid,
@@ -37,6 +38,7 @@ export const SETTINGS_SECTIONS = [
   'ads',
   'members',
   'api',
+  'export',
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
@@ -74,6 +76,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   ads: { id: 'ads', label: 'Ad accounts', icon: Megaphone, group: 'workspace', ownerOnly: true },
   members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace', ownerOnly: true },
   api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace', ownerOnly: true },
+  export: { id: 'export', label: 'Export data', icon: Download, group: 'workspace', ownerOnly: true },
 };
 
 export const RAIL_GROUPS: { label: string | null; group: SectionMeta['group'] }[] = [

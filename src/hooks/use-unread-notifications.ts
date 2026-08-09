@@ -20,6 +20,13 @@ export function useUnreadNotifications(): number {
     let cancelled = false;
 
     (async () => {
+      // Process due tasks for this user/account before fetching count
+      try {
+        await supabase.rpc("process_due_tasks");
+      } catch {
+        // best-effort
+      }
+
       // head:true skips fetching rows — we only need the `count`
       // supabase-js returns alongside the (empty) response body.
       const { count: unreadCount, error } = await supabase

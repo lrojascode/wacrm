@@ -20,6 +20,7 @@ import { DealsSettings } from '@/components/settings/deals-settings';
 import { AdsSettings } from '@/components/settings/ads-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
+import { ExportSettings } from '@/components/settings/export-settings';
 import {
   DEFAULT_SECTION,
   resolveSection,
@@ -98,6 +99,7 @@ function SettingsPageInner() {
     ads: <AdsSettings />,
     members: <MembersTab />,
     api: <ApiKeysSettings />,
+    export: <ExportSettings />,
   };
 
   return (

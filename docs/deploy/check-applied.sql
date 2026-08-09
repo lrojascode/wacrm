@@ -98,6 +98,20 @@ WITH checks AS (
       AND EXISTS (SELECT 1 FROM information_schema.columns
                   WHERE table_name = 'whatsapp_config' AND column_name = 'meta_app_secret_encrypted'),
     'docs/deploy/meta-app-per-account.sql'
+  UNION ALL
+  SELECT
+    '048 brand display',
+    EXISTS (SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'accounts' AND column_name = 'brand_display_mode')
+      AND EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name = 'accounts' AND column_name = 'brand_logo_size'),
+    'docs/deploy/brand-display.sql'
+  UNION ALL
+  SELECT
+    '049 contact tasks',
+    to_regclass('public.contact_tasks') IS NOT NULL
+      AND to_regprocedure('public.process_due_tasks()') IS NOT NULL,
+    'docs/deploy/contact-tasks.sql'
 )
 SELECT
   release,
