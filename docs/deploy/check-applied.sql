@@ -100,6 +100,17 @@ WITH checks AS (
     'docs/deploy/meta-app-per-account.sql'
   UNION ALL
   SELECT
+    '047 owner-only settings',
+    NOT EXISTS (
+      SELECT 1 FROM information_schema.column_privileges
+      WHERE grantee = 'authenticated'
+        AND table_name = 'accounts'
+        AND column_name = 'brand_name'
+        AND privilege_type = 'UPDATE'
+    ),
+    'docs/deploy/owner-only-settings.sql'
+  UNION ALL
+  SELECT
     '048 brand display',
     EXISTS (SELECT 1 FROM information_schema.columns
             WHERE table_name = 'accounts' AND column_name = 'brand_display_mode')
