@@ -26,9 +26,10 @@ import { dateFnsLocale } from "@/lib/i18n/date-locale";
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  conversationId?: string | null;
 }
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({ contact, conversationId }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
   const dateLocale = dateFnsLocale(useLocale());
@@ -151,6 +152,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       .insert({
         contact_id: contact.id,
         account_id: accountId,
+        conversation_id: conversationId || null,
         created_by: user?.id,
         title: newTaskTitle.trim(),
         due_at: new Date(newTaskDueAt).toISOString(),
@@ -164,7 +166,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       setNewTaskDueAt("");
     }
     setAddingTask(false);
-  }, [contact, newTaskTitle, newTaskDueAt, accountId]);
+  }, [contact, newTaskTitle, newTaskDueAt, accountId, conversationId]);
 
   const handleToggleTask = useCallback(async (task: ContactTask) => {
     const supabase = createClient();
