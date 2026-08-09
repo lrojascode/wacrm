@@ -12,32 +12,30 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/account/admin-client';
 import { toCsv } from '@/lib/export/csv';
+import { fetchAllPages } from '@/lib/export/paginate';
 
 export async function GET() {
   try {
     const ctx = await requireRole('owner');
     const admin = supabaseAdmin();
 
-    const [{ data: contacts, error: contactsErr }, { data: campaigns }] =
-      await Promise.all([
+    const [contacts, campaigns] = await Promise.all([
+      fetchAllPages((from, to) =>
         admin
           .from('contacts')
           .select('*, contact_tags(tags(name))')
           .eq('account_id', ctx.accountId)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .range(from, to),
+      ),
+      fetchAllPages((from, to) =>
         admin
           .from('ad_campaigns')
           .select('id, external_id, name')
-          .eq('account_id', ctx.accountId),
-      ]);
-
-    if (contactsErr) {
-      console.error('[GET /api/contacts/export] error:', contactsErr);
-      return NextResponse.json(
-        { error: 'Failed to export contacts' },
-        { status: 500 },
-      );
-    }
+          .eq('account_id', ctx.accountId)
+          .range(from, to),
+      ),
+    ]);
 
     const campaignMap = new Map<string, string>();
     if (campaigns) {
