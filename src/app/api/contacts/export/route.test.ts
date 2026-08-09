@@ -49,10 +49,11 @@ describe('GET /api/contacts/export', () => {
     const mockAdmin = {
       from: vi.fn().mockImplementation((table: string) => {
         if (table === 'contacts') {
-          return {
+          const query = {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
-            order: vi.fn().mockResolvedValue({
+            order: vi.fn().mockReturnThis(),
+            range: vi.fn().mockResolvedValue({
               data: [
                 {
                   id: 'c-1',
@@ -69,12 +70,15 @@ describe('GET /api/contacts/export', () => {
               error: null,
             }),
           };
+          return query;
         }
         if (table === 'ad_campaigns') {
-          return {
+          const query = {
             select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            eq: vi.fn().mockReturnThis(),
+            range: vi.fn().mockResolvedValue({ data: [], error: null }),
           };
+          return query;
         }
         return {};
       }),

@@ -73,10 +73,10 @@ DROP POLICY IF EXISTS contact_tasks_select ON contact_tasks;
 CREATE POLICY contact_tasks_select ON contact_tasks FOR SELECT
   USING (is_account_member(account_id));
 
--- INSERT for any account member
+-- INSERT for agent or higher
 DROP POLICY IF EXISTS contact_tasks_insert ON contact_tasks;
 CREATE POLICY contact_tasks_insert ON contact_tasks FOR INSERT
-  WITH CHECK (is_account_member(account_id) AND auth.uid() = created_by);
+  WITH CHECK (is_account_member(account_id, 'agent') AND auth.uid() = created_by);
 
 -- UPDATE for creator or admin+
 DROP POLICY IF EXISTS contact_tasks_update ON contact_tasks;
@@ -161,7 +161,7 @@ BEGIN
       v_task.contact_id,
       NULL,
       v_task.title,
-      COALESCE(v_task.notes, 'Task due')
+      v_task.notes
     );
 
     v_count := v_count + 1;
@@ -170,5 +170,7 @@ BEGIN
   RETURN v_count;
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION public.process_due_tasks() TO authenticated;
 
 NOTIFY pgrst, 'reload schema';

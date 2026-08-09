@@ -424,7 +424,8 @@
       "toastFailedDelete": "No se pudo eliminar el contacto",
       "toastDeleted": "Contacto eliminado",
       "toastBulkFailedDelete": "No se pudieron eliminar los contactos",
-      "toastBulkDeleted": "{count} contactos eliminados"
+      "toastBulkDeleted": "{count} contactos eliminados",
+      "exportError": "No se pudo descargar la exportación de contactos"
     },
     "form": {
       "addTitle": "Agregar contacto",
@@ -1866,7 +1867,8 @@
       "jsonlTitle": "Exportación completa en JSONL para IA",
       "jsonlDesc": "Conjunto de datos completo formateado para entrenamiento de LLMs, fine-tuning o contexto RAG.",
       "jsonlDetails": "Incluye perfil de contacto, etiquetas, campos personalizados, atribución, negocios de embudo y el historial completo de mensajes sin filtro.",
-      "downloadJsonl": "Descargar exportación JSONL completa"
+      "downloadJsonl": "Descargar exportación JSONL completa",
+      "exportError": "No se pudo descargar el archivo de exportación"
     },
     "security": {
       "title": "Inicio de sesión y seguridad",

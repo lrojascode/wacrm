@@ -35,7 +35,7 @@ export function ContactSidebar({ contact, conversationId }: ContactSidebarProps)
   const tThread = useTranslations("Inbox.messageThread");
   const dateLocale = dateFnsLocale(useLocale());
 
-  const { accountId } = useAuth();
+  const { accountId, isViewer } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
@@ -46,11 +46,17 @@ export function ContactSidebar({ contact, conversationId }: ContactSidebarProps)
 
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDueAt, setNewTaskDueAt] = useState("");
-  const [nowTimestamp] = useState(() => Date.now());
+  const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
   const [addingTask, setAddingTask] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTimestamp(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
+    setNowTimestamp(Date.now());
 
     const supabase = createClient();
 
@@ -406,31 +412,33 @@ export function ContactSidebar({ contact, conversationId }: ContactSidebarProps)
               {tSidebar("tasks")}
             </div>
             <div className="mt-2 space-y-2">
-              <div className="space-y-1.5">
-                <input
-                  type="text"
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  placeholder={tSidebar("addTaskPlaceholder")}
-                  className="w-full rounded-lg border border-border bg-muted px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
-                />
-                <div className="flex gap-2">
+              {!isViewer && (
+                <div className="space-y-1.5">
                   <input
-                    type="datetime-local"
-                    value={newTaskDueAt}
-                    onChange={(e) => setNewTaskDueAt(e.target.value)}
-                    className="flex-1 rounded-lg border border-border bg-muted px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary/50"
+                    type="text"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    placeholder={tSidebar("addTaskPlaceholder")}
+                    className="w-full rounded-lg border border-border bg-muted px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
                   />
-                  <Button
-                    size="sm"
-                    className="h-auto bg-primary px-2 hover:bg-primary/90"
-                    onClick={handleAddTask}
-                    disabled={!newTaskTitle.trim() || !newTaskDueAt || addingTask}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
+                  <div className="flex gap-2">
+                    <input
+                      type="datetime-local"
+                      value={newTaskDueAt}
+                      onChange={(e) => setNewTaskDueAt(e.target.value)}
+                      className="flex-1 rounded-lg border border-border bg-muted px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary/50"
+                    />
+                    <Button
+                      size="sm"
+                      className="h-auto bg-primary px-2 hover:bg-primary/90"
+                      onClick={handleAddTask}
+                      disabled={!newTaskTitle.trim() || !newTaskDueAt || addingTask}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="mt-2 space-y-1.5">
                 {tasks.length === 0 ? (

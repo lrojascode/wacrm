@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Download, FileJson, FileSpreadsheet, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { SettingsPanelHead } from "./settings-panel-head";
+import { downloadBlob } from "@/lib/export/csv";
 
 /**
  * Owner-only export settings panel — CSV export and full JSONL export for AI.
@@ -24,26 +26,38 @@ export function ExportSettings() {
   const [exportingCsv, setExportingCsv] = useState(false);
   const [exportingJsonl, setExportingJsonl] = useState(false);
 
-  const handleDownloadCsv = () => {
+  const handleDownloadCsv = async () => {
     setExportingCsv(true);
-    const a = document.createElement("a");
-    a.href = "/api/contacts/export";
-    a.download = "contacts-export.csv";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => setExportingCsv(false), 2000);
+    try {
+      const res = await fetch("/api/contacts/export");
+      if (!res.ok) {
+        toast.error(t("exportError"));
+        return;
+      }
+      const text = await res.text();
+      downloadBlob("contacts-export.csv", text, res.headers.get("content-type") || "text/csv;charset=utf-8;");
+    } catch {
+      toast.error(t("exportError"));
+    } finally {
+      setExportingCsv(false);
+    }
   };
 
-  const handleDownloadJsonl = () => {
+  const handleDownloadJsonl = async () => {
     setExportingJsonl(true);
-    const a = document.createElement("a");
-    a.href = "/api/export/full";
-    a.download = "full-crm-export.jsonl";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => setExportingJsonl(false), 3000);
+    try {
+      const res = await fetch("/api/export/full");
+      if (!res.ok) {
+        toast.error(t("exportError"));
+        return;
+      }
+      const text = await res.text();
+      downloadBlob("full-crm-export.jsonl", text, res.headers.get("content-type") || "application/x-ndjson;charset=utf-8;");
+    } catch {
+      toast.error(t("exportError"));
+    } finally {
+      setExportingJsonl(false);
+    }
   };
 
   return (

@@ -424,7 +424,8 @@
       "toastFailedDelete": "Failed to delete contact",
       "toastDeleted": "Contact deleted",
       "toastBulkFailedDelete": "Failed to delete contacts",
-      "toastBulkDeleted": "{count} contacts deleted"
+      "toastBulkDeleted": "{count} contacts deleted",
+      "exportError": "Failed to download contacts export"
     },
     "form": {
       "addTitle": "Add Contact",
@@ -1866,7 +1867,8 @@
       "jsonlTitle": "Full CRM JSONL export for AI",
       "jsonlDesc": "Complete dataset formatted for LLM training, fine-tuning, or RAG context.",
       "jsonlDetails": "Includes contact profile, tags, custom fields, attribution details, sales pipeline deals, and complete message histories across all media types.",
-      "downloadJsonl": "Download full JSONL export"
+      "downloadJsonl": "Download full JSONL export",
+      "exportError": "Failed to download export file"
     },
     "security": {
       "title": "Login & security",

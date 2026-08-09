@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { downloadBlob } from '@/lib/export/csv';
 import type { Contact, Tag, ContactTag } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -390,13 +391,18 @@ export default function ContactsPage() {
           {isOwner && (
             <Button
               variant="outline"
-              onClick={() => {
-                const a = document.createElement('a');
-                a.href = '/api/contacts/export';
-                a.download = 'contacts-export.csv';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/contacts/export');
+                  if (!res.ok) {
+                    toast.error(t('exportError'));
+                    return;
+                  }
+                  const text = await res.text();
+                  downloadBlob('contacts-export.csv', text, res.headers.get('content-type') || 'text/csv;charset=utf-8;');
+                } catch {
+                  toast.error(t('exportError'));
+                }
               }}
               className="border-border text-muted-foreground hover:bg-muted"
             >
