@@ -364,7 +364,9 @@
       "tasks": "Tasks",
       "noTasks": "No tasks scheduled",
       "addTaskPlaceholder": "Task title...",
-      "dueAt": "Due date and time"
+      "dueAt": "Due date and time",
+      "taskUpdateError": "Failed to update task",
+      "taskCreateError": "Failed to create task"
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",

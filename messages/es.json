@@ -364,7 +364,9 @@
       "tasks": "Tareas",
       "noTasks": "No hay tareas programadas",
       "addTaskPlaceholder": "Título de la tarea...",
-      "dueAt": "Fecha y hora límite"
+      "dueAt": "Fecha y hora límite",
+      "taskUpdateError": "No se pudo actualizar la tarea",
+      "taskCreateError": "No se pudo crear la tarea"
     },
     "aiBanner": {
       "pausedTitle": "El asistente de IA está pausado aquí",

@@ -23,6 +23,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { useLocale, useTranslations } from "next-intl";
 import { dateFnsLocale } from "@/lib/i18n/date-locale";
+import { toast } from "sonner";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -147,41 +148,67 @@ export function ContactSidebar({ contact, conversationId }: ContactSidebarProps)
     } = await supabase.auth.getSession();
     const user = session?.user;
 
+    if (!user?.id) {
+      toast.error(tSidebar("taskCreateError"));
+      setAddingTask(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("contact_tasks")
       .insert({
         contact_id: contact.id,
         account_id: accountId,
         conversation_id: conversationId || null,
-        created_by: user?.id,
+        created_by: user.id,
         title: newTaskTitle.trim(),
         due_at: new Date(newTaskDueAt).toISOString(),
       })
       .select()
       .single();
 
-    if (!error && data) {
+    if (error || !data) {
+      toast.error(tSidebar("taskCreateError"));
+    } else {
       setTasks((prev) => [...prev, data].sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime()));
       setNewTaskTitle("");
       setNewTaskDueAt("");
     }
     setAddingTask(false);
-  }, [contact, newTaskTitle, newTaskDueAt, accountId, conversationId]);
+  }, [contact, newTaskTitle, newTaskDueAt, accountId, conversationId, tSidebar]);
 
   const handleToggleTask = useCallback(async (task: ContactTask) => {
     const supabase = createClient();
     const now = new Date().toISOString();
     const newCompletedAt = task.completed_at ? null : now;
+    const newNotifiedAt = newCompletedAt ? task.notified_at : null;
 
+    // Optimistic local update
     setTasks((prev) =>
-      prev.map((t) => (t.id === task.id ? { ...t, completed_at: newCompletedAt } : t)),
+      prev.map((t) =>
+        t.id === task.id
+          ? { ...t, completed_at: newCompletedAt, notified_at: newNotifiedAt, updated_at: now }
+          : t,
+      ),
     );
 
-    await supabase
+    const updatePayload = newCompletedAt
+      ? { completed_at: newCompletedAt, updated_at: now }
+      : { completed_at: null, notified_at: null, updated_at: now };
+
+    const { error } = await supabase
       .from("contact_tasks")
-      .update({ completed_at: newCompletedAt, updated_at: now })
+      .update(updatePayload)
       .eq("id", task.id);
-  }, []);
+
+    if (error) {
+      toast.error(tSidebar("taskUpdateError"));
+      // Revert optimistic update
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? task : t)),
+      );
+    }
+  }, [tSidebar]);
 
   if (!contact) {
     return (
