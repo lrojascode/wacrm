@@ -360,7 +360,14 @@
       "deals": "Deals",
       "noTags": "No tags",
       "noDeals": "No deals",
-      "addNotePlaceholder": "Add a note..."
+      "noNotes": "No notes yet",
+      "addNotePlaceholder": "Add a note...",
+      "tasks": "Tasks",
+      "noTasks": "No tasks scheduled",
+      "addTaskPlaceholder": "Task title...",
+      "dueAt": "Due date and time",
+      "taskUpdateError": "Failed to update task",
+      "taskCreateError": "Failed to create task"
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
@@ -380,6 +387,7 @@
       "subtitleZero": "Manage your contact list.",
       "customFieldsBtn": "Custom fields",
       "importBtn": "Import",
+      "exportBtn": "Export",
       "addContactBtn": "Add Contact",
       "searchPlaceholder": "Search by name, phone, or email...",
       "filterByTags": "Filter by tags",
@@ -417,7 +425,8 @@
       "toastFailedDelete": "Failed to delete contact",
       "toastDeleted": "Contact deleted",
       "toastBulkFailedDelete": "Failed to delete contacts",
-      "toastBulkDeleted": "{count} contacts deleted"
+      "toastBulkDeleted": "{count} contacts deleted",
+      "exportError": "Failed to download contacts export"
     },
     "form": {
       "addTitle": "Add Contact",
@@ -531,6 +540,7 @@
     "importModal": {
       "title": "Import Contacts",
       "desc": "Upload a CSV with a required <phoneCode>phone</phoneCode> column. Optional: <nameCode>name</nameCode>, <emailCode>email</emailCode>, <companyCode>company</companyCode>, <tagsCode>tags</tagsCode> (comma-separated; quote multi-tag cells).",
+      "sourceNotice": "Note: CSV import does not restore source attribution fields (they are read-only during export).",
       "uploadDropzone": "Click to choose a CSV file",
       "uploadHint": ".csv up to your browser limit",
       "rowsReady": "{count} row ready",
@@ -1752,7 +1762,8 @@
       "deals": "Deals & currency",
       "ads": "Ad accounts",
       "members": "Team members",
-      "api": "API keys"
+      "api": "API keys",
+      "export": "Export data"
     },
     "groups": {
       "account": "Account",
@@ -1824,20 +1835,42 @@
       "identity": "Name and logo",
       "identityDesc": "Replaces the default mark everywhere inside the app for everyone in this account.",
       "logo": "Logo",
-      "logoHint": "PNG, JPG or WebP. Up to 1 MB. Also used as the browser tab icon, so a square image works best.",
+      "logoHint": "PNG, JPG or WebP. Up to 5 MB. Also used as the browser tab icon, so a square image works best.",
       "uploadLogo": "Upload logo",
       "changeLogo": "Change logo",
       "remove": "Remove",
+      "displayMode": "Display mode",
+      "displayModeBoth": "Logo and text",
+      "displayModeLogo": "Logo only",
+      "displayModeText": "Text only",
+      "logoSize": "Logo size",
+      "logoSizeSm": "Small (32px)",
+      "logoSizeMd": "Medium (40px)",
+      "logoSizeLg": "Large (48px)",
+      "preview": "Sidebar preview",
       "nameLabel": "Name",
       "namePlaceholder": "Your company name",
       "nameDesc": "Shown at the top of the sidebar, in the browser tab, and on invitations. Leave it empty to go back to the default name.",
       "adminOnlyHint": "Only account admins can change the brand.",
       "unsupportedImage": "That image type is not supported. Use PNG, JPG or WebP.",
-      "imageTooLarge": "That image is too large. The limit is 1 MB.",
+      "imageTooLarge": "That image is too large. The limit is 5 MB.",
       "save": "Save",
       "saving": "Saving...",
       "saveFailed": "Failed to save the brand",
       "saveSuccess": "Brand updated"
+    },
+    "export": {
+      "title": "Export data",
+      "description": "Download your contact list in CSV format or extract complete CRM data in JSONL format for AI model fine-tuning and analysis.",
+      "csvTitle": "Contacts CSV export",
+      "csvDesc": "Symmetric with contact import (phone, name, email, company, tags) plus attribution source, origin campaign, and creation date.",
+      "csvNotice": "Note: source attribution is exported for reporting, but re-importing this CSV will not restore attribution fields.",
+      "downloadCsv": "Download contacts CSV",
+      "jsonlTitle": "Full CRM JSONL export for AI",
+      "jsonlDesc": "Complete dataset formatted for LLM training, fine-tuning, or RAG context.",
+      "jsonlDetails": "Includes contact profile, tags, custom fields, attribution details, sales pipeline deals, and complete message histories across all media types.",
+      "downloadJsonl": "Download full JSONL export",
+      "exportError": "Failed to download export file"
     },
     "security": {
       "title": "Login & security",

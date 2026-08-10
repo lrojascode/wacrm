@@ -96,7 +96,7 @@ function SetupStep({
  * a client-writable table directly).
  */
 export function AdsSettings() {
-  const { canEditSettings } = useAuth();
+  const { isOwner } = useAuth();
   const t = useTranslations('Settings.ads');
 
   const [accounts, setAccounts] = useState<AdAccount[]>([]);
@@ -266,7 +266,7 @@ export function AdsSettings() {
                       </p>
                     )}
                   </div>
-                  {canEditSettings && (
+                  {isOwner && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -287,7 +287,7 @@ export function AdsSettings() {
             </div>
           )}
 
-          {canEditSettings && accounts.length > 0 && (
+          {isOwner && accounts.length > 0 && (
             <Button
               variant="outline"
               onClick={handleSyncNow}
@@ -305,7 +305,7 @@ export function AdsSettings() {
         </CardContent>
       </Card>
 
-      {canEditSettings && (
+      {isOwner && (
         <Card>
           <CardHeader>
             <CardTitle className="text-foreground">{t('connectMeta')}</CardTitle>
@@ -347,7 +347,7 @@ export function AdsSettings() {
         </Card>
       )}
 
-      {canEditSettings && (
+      {isOwner && (
         <Card>
           <CardHeader>
             <CardTitle className="text-foreground">{t('connectGoogle')}</CardTitle>

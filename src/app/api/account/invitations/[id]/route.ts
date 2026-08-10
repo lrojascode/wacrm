@@ -27,7 +27,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const ctx = await requireRole("admin");
+    const ctx = await requireRole("owner");
 
     const limit = checkRateLimit(
       `admin:inviteRevoke:${ctx.userId}`,

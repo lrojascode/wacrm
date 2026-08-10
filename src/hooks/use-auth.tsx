@@ -48,6 +48,10 @@ interface AccountSummary {
   brand_name: string | null;
   /** Public URL of the uploaded logo (migration 043), or null. */
   logo_url: string | null;
+  /** Brand display mode ('logo' | 'text' | 'both') (migration 048). */
+  brand_display_mode?: string | null;
+  /** Brand logo size ('sm' | 'md' | 'lg') (migration 048). */
+  brand_logo_size?: string | null;
 }
 
 interface AuthContextValue {
@@ -180,9 +184,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               .maybeSingle();
 
           // default_currency added in migration 021, brand_name /
-          // logo_url in 043; both narrowed below for older schemas.
+          // logo_url in 043, display_mode / logo_size in 048;
+          // narrowed below for older schemas.
           let { data: account, error: accountErr } = await loadAccount(
-            "id, name, default_currency, brand_name, logo_url",
+            "id, name, default_currency, brand_name, logo_url, brand_display_mode, brand_logo_size",
           );
 
           if (accountErr) {

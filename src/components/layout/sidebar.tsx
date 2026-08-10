@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { resolveBrand } from "@/lib/branding/brand";
+import { BRAND_LOGO_SIZES, resolveBrand } from "@/lib/branding/brand";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
@@ -211,39 +211,51 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       >
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            {brand.logoUrl && !logoFailed ? (
-              // object-contain, not cover: a customer's logo is rarely
-              // square and cropping it is worse than letterboxing it.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={brand.logoUrl}
-                alt=""
-                className="h-8 w-8 shrink-0 rounded-lg object-contain"
-                // A logo deleted straight out of the bucket would
-                // otherwise leave a broken-image icon as the brand
-                // mark. Fall back to the default square instead.
-                onError={() => setLogoFailed(true)}
-              />
-            ) : (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <MessageSquare className="h-4 w-4" />
-              </div>
-            )}
-            <span className="truncate text-sm font-semibold text-foreground">
-              {brand.title}
-            </span>
-          </Link>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t("closeMenu")}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        {(() => {
+          const sizeConfig = BRAND_LOGO_SIZES[brand.logoSize] || BRAND_LOGO_SIZES.sm;
+          const showLogo = brand.displayMode === "logo" || brand.displayMode === "both";
+          const showText = brand.displayMode === "text" || brand.displayMode === "both";
+
+          return (
+            <div className={cn("flex shrink-0 items-center justify-between gap-2 border-b border-border px-4", sizeConfig.container)}>
+              <Link href="/dashboard" className="flex items-center gap-2 overflow-hidden">
+                {showLogo && (
+                  brand.logoUrl && !logoFailed ? (
+                    // object-contain, not cover: a customer's logo is rarely
+                    // square and cropping it is worse than letterboxing it.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={brand.logoUrl}
+                      alt=""
+                      className={cn("shrink-0 rounded-lg object-contain", sizeConfig.logo)}
+                      // A logo deleted straight out of the bucket would
+                      // otherwise leave a broken-image icon as the brand
+                      // mark. Fall back to the default square instead.
+                      onError={() => setLogoFailed(true)}
+                    />
+                  ) : (
+                    <div className={cn("flex shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground", sizeConfig.logo)}>
+                      <MessageSquare className={sizeConfig.icon} />
+                    </div>
+                  )
+                )}
+                {showText && (
+                  <span className="truncate text-sm font-semibold text-foreground">
+                    {brand.title}
+                  </span>
+                )}
+              </Link>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label={t("closeMenu")}
+                className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          );
+        })()}
 
         {/* Main navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">

@@ -18,8 +18,8 @@ export const BRAND_BUCKET = "brand-assets";
 /** Mirrors `accounts_brand_name_len` (migration 043). */
 export const MAX_BRAND_NAME_LEN = 60;
 
-/** Mirrors the bucket's `file_size_limit` (1 MB, migration 043). */
-export const MAX_LOGO_BYTES = 1024 * 1024;
+/** Mirrors the bucket's `file_size_limit` (5 MB, migration 048). */
+export const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 
 /**
  * Mirrors the bucket's `allowed_mime_types`. Kept identical on
@@ -40,10 +40,24 @@ export const LOGO_ACCEPT = LOGO_MIME.join(",");
  */
 export const DEFAULT_BRAND_TITLE = "wacrm";
 
+export type BrandDisplayMode = "logo" | "text" | "both";
+export type BrandLogoSize = "sm" | "md" | "lg";
+
+export const BRAND_LOGO_SIZES: Record<
+  BrandLogoSize,
+  { container: string; logo: string; icon: string }
+> = {
+  sm: { container: "h-14", logo: "h-8 w-8", icon: "h-4 w-4" },
+  md: { container: "h-16", logo: "h-10 w-10", icon: "h-5 w-5" },
+  lg: { container: "h-20", logo: "h-12 w-12", icon: "h-6 w-6" },
+};
+
 /** The branding columns as stored on `accounts`. */
 export interface BrandRow {
   brand_name?: string | null;
   logo_url?: string | null;
+  brand_display_mode?: string | null;
+  brand_logo_size?: string | null;
 }
 
 /** What every surface actually renders. */
@@ -54,6 +68,10 @@ export interface Brand {
   logoUrl: string | null;
   /** True when this account configured its own name (not the fallback). */
   isCustom: boolean;
+  /** Display mode ('logo' | 'text' | 'both'). Default: 'both'. */
+  displayMode: BrandDisplayMode;
+  /** Logo display size ('sm' | 'md' | 'lg'). Default: 'sm'. */
+  logoSize: BrandLogoSize;
 }
 
 /**
@@ -86,10 +104,25 @@ export function resolveBrand(
   const logo = typeof row?.logo_url === "string" && row.logo_url.length > 0
     ? row.logo_url
     : null;
+  const displayMode: BrandDisplayMode =
+    row?.brand_display_mode === "logo" ||
+    row?.brand_display_mode === "text" ||
+    row?.brand_display_mode === "both"
+      ? row.brand_display_mode
+      : "both";
+  const logoSize: BrandLogoSize =
+    row?.brand_logo_size === "sm" ||
+    row?.brand_logo_size === "md" ||
+    row?.brand_logo_size === "lg"
+      ? row.brand_logo_size
+      : "sm";
+
   return {
     title: name ?? fallbackTitle,
     logoUrl: logo,
     isCustom: name !== null,
+    displayMode,
+    logoSize,
   };
 }
 

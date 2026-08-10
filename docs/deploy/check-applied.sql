@@ -98,6 +98,44 @@ WITH checks AS (
       AND EXISTS (SELECT 1 FROM information_schema.columns
                   WHERE table_name = 'whatsapp_config' AND column_name = 'meta_app_secret_encrypted'),
     'docs/deploy/meta-app-per-account.sql'
+  UNION ALL
+  SELECT
+    -- 045 tightens conversations_delete to owner-only and rewrites
+    -- deals_conversation_id_fkey to ON DELETE SET NULL so a delete no
+    -- longer fails against a linked deal — the FK action is the trace
+    -- that's cheap to check from the catalog.
+    '045 conversation owner delete',
+    EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'deals_conversation_id_fkey'
+        AND confdeltype = 'n'
+    ),
+    'docs/deploy/conversation-delete.sql'
+  UNION ALL
+  SELECT
+    '047 owner-only settings',
+    NOT EXISTS (
+      SELECT 1 FROM information_schema.column_privileges
+      WHERE grantee = 'authenticated'
+        AND table_name = 'accounts'
+        AND column_name = 'brand_name'
+        AND privilege_type = 'UPDATE'
+    ),
+    'docs/deploy/owner-only-settings.sql'
+  UNION ALL
+  SELECT
+    '048 brand display',
+    EXISTS (SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'accounts' AND column_name = 'brand_display_mode')
+      AND EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name = 'accounts' AND column_name = 'brand_logo_size'),
+    'docs/deploy/brand-display.sql'
+  UNION ALL
+  SELECT
+    '049 contact tasks',
+    to_regclass('public.contact_tasks') IS NOT NULL
+      AND to_regprocedure('public.process_due_tasks()') IS NOT NULL,
+    'docs/deploy/contact-tasks.sql'
 )
 SELECT
   release,

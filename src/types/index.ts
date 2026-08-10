@@ -198,7 +198,7 @@ export interface Conversation {
 // Notifications (migration 027, deal_assigned added in 041)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned' | 'deal_assigned';
+export type NotificationType = 'conversation_assigned' | 'deal_assigned' | 'task_due';
 
 export interface Notification {
   id: string;
@@ -214,6 +214,21 @@ export interface Notification {
   body?: string;
   read_at?: string;
   created_at: string;
+}
+
+export interface ContactTask {
+  id: string;
+  account_id: string;
+  contact_id: string;
+  conversation_id?: string | null;
+  created_by: string;
+  title: string;
+  notes?: string | null;
+  due_at: string;
+  completed_at?: string | null;
+  notified_at?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type SenderType = 'customer' | 'agent' | 'bot';

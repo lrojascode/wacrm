@@ -409,6 +409,9 @@ export function ImportModal({
                 })
               }}
             />
+            <p className="text-xs text-muted-foreground/80 italic">
+              {t('sourceNotice')}
+            </p>
           </DialogHeader>
 
           <div

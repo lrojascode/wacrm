@@ -38,6 +38,8 @@ const GENERIC_BRAND: Brand = {
   title: DEFAULT_BRAND_TITLE,
   logoUrl: null,
   isCustom: false,
+  displayMode: "both",
+  logoSize: "sm",
 };
 
 export const getBrand = cache(async (): Promise<Brand> => {
@@ -54,7 +56,7 @@ export const getBrand = cache(async (): Promise<Brand> => {
     // than one row we want to notice and fall back, not throw.
     const { data, error } = await supabase
       .from("accounts")
-      .select("brand_name, logo_url")
+      .select("brand_name, logo_url, brand_display_mode, brand_logo_size")
       .limit(2);
 
     if (error || !data || data.length !== 1) return GENERIC_BRAND;

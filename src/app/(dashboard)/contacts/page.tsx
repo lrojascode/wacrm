@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { downloadBlob } from '@/lib/export/csv';
 import type { Contact, Tag, ContactTag } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +40,7 @@ import {
   Search,
   Plus,
   Upload,
+  Download,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -55,6 +57,7 @@ import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
+import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
 import { SOURCE_PICKER_ORDER } from '@/lib/attribution/sources';
@@ -71,6 +74,7 @@ export default function ContactsPage() {
   // and the filter can't drift apart.
   const tSources = useTranslations('Contacts.detailView.source.options');
   const supabase = createClient();
+  const { isOwner } = useAuth();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
 
@@ -384,6 +388,27 @@ export default function ContactsPage() {
             <Upload className="size-4" />
             {t('importBtn')}
           </GatedButton>
+          {isOwner && (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/contacts/export');
+                  if (!res.ok) {
+                    toast.error(t('exportError'));
+                    return;
+                  }
+                  downloadBlob('contacts-export.csv', await res.blob());
+                } catch {
+                  toast.error(t('exportError'));
+                }
+              }}
+              className="border-border text-muted-foreground hover:bg-muted"
+            >
+              <Download className="size-4" />
+              {t('exportBtn')}
+            </Button>
+          )}
           <GatedButton
             canAct={canEdit}
             gateReason="add or import contacts"

@@ -1,5 +1,6 @@
 import {
   Coins,
+  Download,
   FileText,
   KeyRound,
   LayoutGrid,
@@ -37,34 +38,45 @@ export const SETTINGS_SECTIONS = [
   'ads',
   'members',
   'api',
+  'export',
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export const DEFAULT_SECTION: SettingsSection = 'overview';
 
-/** Rail grouping. `adminOnly` items are hidden for non-admins. */
+/**
+ * Rail grouping. `ownerOnly` sections are hidden from the rail (and
+ * blocked in the page render, not just the menu — see
+ * `settings/page.tsx`) for anyone below `owner`. These mirror
+ * `canEditOwnerSettings` in `@/lib/auth/roles` — five backed by
+ * migration 047's owner-only RLS/grants, plus Appearance, which is
+ * hidden here only because it's a personal per-device preference with
+ * nothing in the database to restrict (see appearance-panel.tsx).
+ */
 export interface SectionMeta {
   id: SettingsSection;
   label: string;
   icon: LucideIcon;
   group: 'top' | 'account' | 'workspace';
+  ownerOnly?: boolean;
 }
 
 export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   overview: { id: 'overview', label: 'Overview', icon: LayoutGrid, group: 'top' },
   profile: { id: 'profile', label: 'Your profile', icon: User, group: 'account' },
   security: { id: 'security', label: 'Login & security', icon: Shield, group: 'account' },
-  appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },
-  brand: { id: 'brand', label: 'Brand', icon: Sparkles, group: 'workspace' },
-  whatsapp: { id: 'whatsapp', label: 'WhatsApp', icon: PlugZap, group: 'workspace' },
+  appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account', ownerOnly: true },
+  brand: { id: 'brand', label: 'Brand', icon: Sparkles, group: 'workspace', ownerOnly: true },
+  whatsapp: { id: 'whatsapp', label: 'WhatsApp', icon: PlugZap, group: 'workspace', ownerOnly: true },
   templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
   'quick-replies': { id: 'quick-replies', label: 'Quick replies', icon: Zap, group: 'workspace' },
   fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace' },
   deals: { id: 'deals', label: 'Deals & currency', icon: Coins, group: 'workspace' },
-  ads: { id: 'ads', label: 'Ad accounts', icon: Megaphone, group: 'workspace' },
-  members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace' },
-  api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace' },
+  ads: { id: 'ads', label: 'Ad accounts', icon: Megaphone, group: 'workspace', ownerOnly: true },
+  members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace', ownerOnly: true },
+  api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace', ownerOnly: true },
+  export: { id: 'export', label: 'Export data', icon: Download, group: 'workspace', ownerOnly: true },
 };
 
 export const RAIL_GROUPS: { label: string | null; group: SectionMeta['group'] }[] = [

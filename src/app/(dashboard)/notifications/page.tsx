@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type { Notification } from "@/types";
-import { Bell, CheckCheck, Handshake, Loader2, UserPlus } from "lucide-react";
+import { Bell, CalendarCheck, CheckCheck, Handshake, Loader2, UserPlus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useLocale, useTranslations } from "next-intl";
 import { dateFnsLocale } from "@/lib/i18n/date-locale";
@@ -17,6 +17,7 @@ import { toast } from "sonner";
 const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   conversation_assigned: UserPlus,
   deal_assigned: Handshake,
+  task_due: CalendarCheck,
 };
 
 export default function NotificationsPage() {

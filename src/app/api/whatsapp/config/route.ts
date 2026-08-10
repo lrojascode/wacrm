@@ -31,6 +31,27 @@ async function resolveAccountId(
   return data.account_id as string
 }
 
+/**
+ * Resolve account_id + role together — used by POST/DELETE, which
+ * write the config and need to reject a non-owner with a clear 403
+ * rather than let it fall through to whatsapp_config's RLS (owner-only
+ * as of migration 047) and surface as an opaque insert/delete failure.
+ * GET stays on the plain `resolveAccountId` above: any member may view
+ * connection status, only saving/resetting it is owner-only.
+ */
+async function resolveAccountIdAndRole(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+): Promise<{ accountId: string; role: string } | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('account_id, account_role')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error || !data?.account_id || !data.account_role) return null
+  return { accountId: data.account_id as string, role: data.account_role as string }
+}
+
 // Lazy-initialised service-role client. We need it to detect a
 // phone_number_id already claimed by a *different* user — under RLS,
 // the user's own session can't see other users' rows, so the conflict
@@ -176,13 +197,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
+    const resolved = await resolveAccountIdAndRole(supabase, user.id)
+    if (!resolved) {
       return NextResponse.json(
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
     }
+    if (resolved.role !== 'owner') {
+      return NextResponse.json(
+        { error: 'Only the account owner can change WhatsApp settings.' },
+        { status: 403 },
+      )
+    }
+    const accountId = resolved.accountId
 
     const body = await request.json()
     const { phone_number_id, waba_id, access_token, verify_token, pin } = body
@@ -451,13 +479,20 @@ export async function DELETE() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
+    const resolved = await resolveAccountIdAndRole(supabase, user.id)
+    if (!resolved) {
       return NextResponse.json(
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
     }
+    if (resolved.role !== 'owner') {
+      return NextResponse.json(
+        { error: 'Only the account owner can reset WhatsApp settings.' },
+        { status: 403 },
+      )
+    }
+    const accountId = resolved.accountId
 
     const { error: deleteError } = await supabase
       .from('whatsapp_config')
