@@ -34,8 +34,7 @@ export function ExportSettings() {
         toast.error(t("exportError"));
         return;
       }
-      const text = await res.text();
-      downloadBlob("contacts-export.csv", text, res.headers.get("content-type") || "text/csv;charset=utf-8;");
+      downloadBlob("contacts-export.csv", await res.blob());
     } catch {
       toast.error(t("exportError"));
     } finally {
@@ -51,8 +50,7 @@ export function ExportSettings() {
         toast.error(t("exportError"));
         return;
       }
-      const text = await res.text();
-      downloadBlob("full-crm-export.jsonl", text, res.headers.get("content-type") || "application/x-ndjson;charset=utf-8;");
+      downloadBlob("full-crm-export.jsonl", await res.blob());
     } catch {
       toast.error(t("exportError"));
     } finally {

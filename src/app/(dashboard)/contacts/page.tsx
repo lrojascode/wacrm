@@ -398,8 +398,7 @@ export default function ContactsPage() {
                     toast.error(t('exportError'));
                     return;
                   }
-                  const text = await res.text();
-                  downloadBlob('contacts-export.csv', text, res.headers.get('content-type') || 'text/csv;charset=utf-8;');
+                  downloadBlob('contacts-export.csv', await res.blob());
                 } catch {
                   toast.error(t('exportError'));
                 }
