@@ -16,7 +16,7 @@ Meta's Cloud API Calling uses **Graph API Webhooks + WebRTC** by default:
 
 ### Pre-existing In-App Infrastructure
 wacrm already possesses the core architectural building blocks required:
-1. **Server Webhook Receiver**: Crated & secured at [`src/app/api/whatsapp/webhook/`](file:///Users/luisr/Proyectos/wacrm/src/app/api/whatsapp/webhook/) to capture Meta `calls` webhook payloads.
+1. **Server Webhook Receiver**: Created & secured at [`src/app/api/whatsapp/webhook/`](file:///Users/luisr/Proyectos/wacrm/src/app/api/whatsapp/webhook/) to capture Meta `calls` webhook payloads.
 2. **Realtime Event Relay**: **Supabase Realtime** channels are already integrated across the inbox to push incoming call offers and SDP signals instantly to the browser client.
 
 ---
