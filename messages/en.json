@@ -359,6 +359,7 @@
       "notes": "Notes",
       "deals": "Deals",
       "noTags": "No tags",
+      "noDeals": "No deals",
       "noNotes": "No notes yet",
       "addNotePlaceholder": "Add a note...",
       "tasks": "Tasks",
@@ -1761,7 +1762,8 @@
       "deals": "Deals & currency",
       "ads": "Ad accounts",
       "members": "Team members",
-      "api": "API keys"
+      "api": "API keys",
+      "export": "Export data"
     },
     "groups": {
       "account": "Account",

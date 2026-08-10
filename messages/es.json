@@ -359,6 +359,7 @@
       "notes": "Notas",
       "deals": "Negocios",
       "noTags": "Sin etiquetas",
+      "noDeals": "Sin negocios",
       "noNotes": "Sin notas",
       "addNotePlaceholder": "Agregar nota...",
       "tasks": "Tareas",
@@ -1761,7 +1762,8 @@
       "deals": "Negocios y moneda",
       "ads": "Cuentas publicitarias",
       "members": "Miembros del equipo",
-      "api": "Claves de API"
+      "api": "Claves de API",
+      "export": "Exportar datos"
     },
     "groups": {
       "account": "Cuenta",
