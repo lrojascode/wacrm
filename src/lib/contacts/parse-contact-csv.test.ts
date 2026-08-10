@@ -25,6 +25,15 @@ describe('parseTagCell', () => {
 });
 
 describe('parseContactCsv', () => {
+  it('unescapes doubled quotes inside a quoted field (RFC 4180)', () => {
+    const csv = `phone,name
++15551234567,"Jane ""CEO"" Doe"`;
+
+    expect(parseContactCsv(csv).rows).toEqual([
+      { phone: '+15551234567', name: 'Jane "CEO" Doe', email: undefined, company: undefined, tagNames: [] },
+    ]);
+  });
+
   it('parses optional tags column', () => {
     const csv = `phone,name,tags
 +15551234567,Alice,"VIP, Lead"

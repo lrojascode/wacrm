@@ -97,15 +97,23 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
   };
 }
 
-/** Simple CSV line parse (handles quoted fields). */
+/** Simple CSV line parse (handles quoted fields, including `""` escapes). */
 function parseCsvLine(line: string): string[] {
   const values: string[] = [];
   let current = '';
   let inQuotes = false;
 
-  for (const char of line) {
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
     if (char === '"') {
-      inQuotes = !inQuotes;
+      if (inQuotes && line[i + 1] === '"') {
+        // Escaped quote inside a quoted field (RFC 4180 `""`) — emit one
+        // literal `"` and skip the pair, instead of losing it entirely.
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
     } else if (char === ',' && !inQuotes) {
       values.push(current.trim());
       current = '';
