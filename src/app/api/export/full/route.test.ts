@@ -86,6 +86,7 @@ describe('GET /api/export/full', () => {
           return {
             select: vi.fn().mockReturnThis(),
             in: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
             range: vi.fn().mockResolvedValue({ data: [], error: null }),
           };
         }
@@ -93,6 +94,7 @@ describe('GET /api/export/full', () => {
           return {
             select: vi.fn().mockReturnThis(),
             in: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
             range: vi.fn().mockResolvedValue({ data: [], error: null }),
           };
         }
@@ -100,6 +102,7 @@ describe('GET /api/export/full', () => {
           return {
             select: vi.fn().mockReturnThis(),
             in: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
             range: vi.fn().mockResolvedValue({ data: [], error: null }),
           };
         }
@@ -107,6 +110,7 @@ describe('GET /api/export/full', () => {
           return {
             select: vi.fn().mockReturnThis(),
             in: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
             range: vi.fn().mockResolvedValue({
               data: [
                 {

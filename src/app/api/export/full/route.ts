@@ -88,15 +88,17 @@ export async function GET() {
               fetchAllPages((from, to) =>
                 admin
                   .from('contact_tags')
-                  .select('contact_id, tags(id, name, color)')
+                  .select('id, contact_id, tags(id, name, color)')
                   .in('contact_id', contactIds)
+                  .order('id', { ascending: true })
                   .range(from, to),
               ),
               fetchAllPages((from, to) =>
                 admin
                   .from('contact_custom_values')
-                  .select('contact_id, value, custom_fields(field_name, field_type)')
+                  .select('id, contact_id, value, custom_fields(field_name, field_type)')
                   .in('contact_id', contactIds)
+                  .order('id', { ascending: true })
                   .range(from, to),
               ),
               fetchAllPages((from, to) =>
@@ -106,6 +108,7 @@ export async function GET() {
                     'id, contact_id, title, value, currency, status, closed_at, created_at, updated_at, pipelines(name), pipeline_stages(name)',
                   )
                   .in('contact_id', contactIds)
+                  .order('id', { ascending: true })
                   .range(from, to),
               ),
               fetchAllPages((from, to) =>
@@ -113,6 +116,7 @@ export async function GET() {
                   .from('conversations')
                   .select('id, contact_id, status, unread_count, created_at, updated_at')
                   .in('contact_id', contactIds)
+                  .order('id', { ascending: true })
                   .range(from, to),
               ),
             ]);
@@ -185,6 +189,7 @@ export async function GET() {
                   .select('*')
                   .in('conversation_id', convIds)
                   .order('created_at', { ascending: true })
+                  .order('id', { ascending: true })
                   .range(from, to),
               );
 
