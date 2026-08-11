@@ -15,6 +15,11 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import {
+  handleCallsWebhookChange,
+  isCallsWebhookField,
+  type WhatsAppCall,
+} from '@/lib/whatsapp/call-webhook'
 import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
 
 /**
@@ -89,6 +94,7 @@ export interface WhatsAppWebhookEntry {
       }
       contacts?: WhatsAppContact[]
       messages?: WhatsAppMessage[]
+      calls?: WhatsAppCall[]
       statuses?: Array<{
         id: string
         status: string
@@ -198,6 +204,18 @@ export async function processWebhook(
         for (const status of value.statuses) {
           await handleStatusUpdate(status)
         }
+      }
+
+      // Handle call events
+      if (value.calls?.length || isCallsWebhookField(change.field)) {
+        if (value.calls?.length) {
+          await handleCallsWebhookChange({
+            phoneNumberId,
+            calls: value.calls,
+            contacts: value.contacts,
+          })
+        }
+        if (!value.messages?.length) continue
       }
 
       // Handle incoming messages. `contacts` is deliberately NOT part of
