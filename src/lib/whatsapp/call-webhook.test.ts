@@ -143,6 +143,18 @@ describe('call-webhook', () => {
           }),
         }
       }
+      if (table === 'accounts') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { owner_user_id: 'usr_owner' },
+                error: null,
+              }),
+            }),
+          }),
+        }
+      }
       if (table === 'messages') {
         return {
           insert: mockUpsertMessage,
