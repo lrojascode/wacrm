@@ -113,3 +113,26 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE call_sessions;
   END IF;
 END $$;
+
+-- Atomic update for conversation last message & unread count
+CREATE OR REPLACE FUNCTION update_conversation_last_message(
+  p_conversation_id UUID,
+  p_last_message_text TEXT,
+  p_last_message_at TIMESTAMPTZ DEFAULT NOW(),
+  p_increment_unread BOOLEAN DEFAULT TRUE
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE conversations
+  SET
+    last_message_text = p_last_message_text,
+    last_message_at = p_last_message_at,
+    unread_count = CASE WHEN p_increment_unread THEN COALESCE(unread_count, 0) + 1 ELSE unread_count END,
+    updated_at = NOW()
+  WHERE id = p_conversation_id;
+END;
+$$;
+
