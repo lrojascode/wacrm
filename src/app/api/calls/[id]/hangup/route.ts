@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
 import { rejectCall, terminateCall } from '@/lib/whatsapp/calls-api'
 
 export async function POST(
@@ -7,14 +8,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const ctx = await requireRole('agent')
     const { id: callSessionId } = await params
     const body = (await request.json().catch(() => ({}))) as { action?: 'reject' | 'terminate' }
 
-    // Fetch session via service role (supports beacon / unauthenticated sendBeacon)
+    // Fetch session via service role scoped to caller account_id
     const { data: session, error: fetchErr } = await supabaseAdmin()
       .from('call_sessions')
       .select('*')
       .eq('id', callSessionId)
+      .eq('account_id', ctx.accountId)
       .maybeSingle()
 
     if (fetchErr || !session) {
@@ -41,6 +44,7 @@ export async function POST(
           ended_at: new Date().toISOString(),
         })
         .eq('id', callSessionId)
+        .eq('account_id', ctx.accountId)
     } else {
       try {
         await terminateCall({
@@ -59,12 +63,11 @@ export async function POST(
           ended_at: new Date().toISOString(),
         })
         .eq('id', callSessionId)
+        .eq('account_id', ctx.accountId)
     }
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Hangup failed'
-    console.error('[calls/hangup] Error in hangup route:', err)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return toErrorResponse(err)
   }
 }

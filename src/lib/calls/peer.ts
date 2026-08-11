@@ -33,10 +33,29 @@ export interface CallPeerOptions {
   onRemoteTrack?: (track: MediaStreamTrack, stream: MediaStream) => void
 }
 
-const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-]
+function resolveIceServers(customServers?: RTCIceServer[]): RTCIceServer[] {
+  if (customServers && customServers.length > 0) {
+    return customServers
+  }
+
+  const servers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ]
+
+  const turnUrl = process.env.NEXT_PUBLIC_TURN_URL || process.env.TURN_URL
+  const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME || process.env.TURN_USERNAME
+  const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL || process.env.TURN_CREDENTIAL
+
+  if (turnUrl) {
+    const turnEntry: RTCIceServer = { urls: turnUrl }
+    if (turnUsername) turnEntry.username = turnUsername
+    if (turnCredential) turnEntry.credential = turnCredential
+    servers.push(turnEntry)
+  }
+
+  return servers
+}
 
 export class CallPeerSession {
   private callSessionId: string
@@ -53,7 +72,7 @@ export class CallPeerSession {
   constructor(options: CallPeerOptions) {
     this.callSessionId = options.callSessionId
     this.offerSdp = options.offerSdp
-    this.iceServers = options.iceServers || DEFAULT_ICE_SERVERS
+    this.iceServers = resolveIceServers(options.iceServers)
     this.onStateChange = options.onStateChange
     this.onRemoteTrack = options.onRemoteTrack
   }

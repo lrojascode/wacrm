@@ -386,6 +386,22 @@
       "networkError": "Couldn’t reach the server."
     }
   },
+  "Calls": {
+    "incomingCall": "Incoming call",
+    "unknownContact": "Unknown contact",
+    "answer": "Answer",
+    "reject": "Decline",
+    "hangup": "Hang up",
+    "muteMic": "Mute microphone",
+    "unmuteMic": "Unmute microphone",
+    "clickToViewChat": "Click to view chat",
+    "contact": "Contact",
+    "missedCall": "Missed call",
+    "acceptedCall": "Call",
+    "rejectedCall": "Call rejected",
+    "failedCall": "Call unanswered",
+    "call": "Call"
+  },
   "Contacts": {
     "page": {
       "title": "Contacts",

@@ -10,9 +10,11 @@
  *     (content_type = 'call').
  */
 
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
 import { resolveConversationByPhone } from '@/lib/whatsapp/resolve-conversation'
 import { isUniqueViolation } from '@/lib/contacts/dedupe'
+import { derivePresence, type StoredPresence } from '@/lib/presence'
+import type { AccountRole } from '@/lib/auth/roles'
 
 export function isCallsWebhookField(field: string): boolean {
   return field === 'calls'
@@ -25,70 +27,60 @@ export interface WhatsAppCallContact {
 
 export interface WhatsAppCall {
   id?: string
-  call_id?: string
-  event: 'connect' | 'terminate' | 'offer' | string
-  from: string
-  to?: string
-  timestamp?: string | number
-  sdp?: string
+  from?: string
+  session_id?: string
+  event?: string
   reason?: string
   status?: string
-  start_time?: string | number
-  end_time?: string | number
-  duration?: number
-  contacts?: WhatsAppCallContact[]
+  duration?: number | string
+  sdp?: string
 }
 
-export interface HandleCallsWebhookOptions {
-  phoneNumberId: string
-  calls: WhatsAppCall[]
-  contacts?: WhatsAppCallContact[]
-}
-
-function formatCallDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins}:${secs < 10 ? '0' : ''}${secs}`
-}
-
-export async function handleCallsWebhookChange(options: HandleCallsWebhookOptions): Promise<void> {
-  const { phoneNumberId, calls, contacts } = options
-
-  if (!calls || calls.length === 0) return
-
-  // 1. Fetch account's whatsapp_config
-  const { data: config, error: configError } = await supabaseAdmin()
-    .from('whatsapp_config')
-    .select('id, account_id, user_id')
-    .eq('phone_number_id', phoneNumberId)
-    .maybeSingle()
-
-  if (configError || !config) {
-    console.error('[call-webhook] No whatsapp_config found for phone_number_id:', phoneNumberId, configError)
-    return
+export interface WhatsAppCallsWebhookChange {
+  field: 'calls'
+  value: {
+    messaging_product: 'whatsapp'
+    metadata: {
+      display_phone_number?: string
+      phone_number_id: string
+    }
+    contacts?: WhatsAppCallContact[]
+    calls?: WhatsAppCall[]
   }
+}
 
-  const accountId = config.account_id
+
+function isUserConnected(
+  userId: string,
+  presenceMap: Map<string, { status: StoredPresence; last_seen_at: string }>,
+  now: number = Date.now()
+): boolean {
+  const row = presenceMap.get(userId)
+  if (!row) return false
+  return derivePresence(row.status, row.last_seen_at, now) !== 'offline'
+}
+
+export async function handleCallsWebhookChange(
+  accountId: string,
+  change: WhatsAppCallsWebhookChange
+): Promise<void> {
+  const calls = change.value.calls || []
+  if (calls.length === 0) return
+
+  const contact = change.value.contacts?.[0]
+  const contactName = contact?.profile?.name
 
   for (const call of calls) {
-    const waCallId = call.call_id || call.id
-    if (!waCallId) {
-      console.warn('[call-webhook] Skipping call event missing call_id/id:', call)
-      continue
-    }
+    const waCallId = call.id || call.session_id
+    if (!waCallId) continue
 
-    const fromPhone = call.from || call.contacts?.[0]?.wa_id || contacts?.[0]?.wa_id
+    const fromPhone = call.from || contact?.wa_id
     if (!fromPhone) {
-      console.warn('[call-webhook] Skipping call event missing customer phone number:', call)
+      console.warn('[call-webhook] Skipping call missing from phone number:', call)
       continue
     }
 
-    const contactName =
-      call.contacts?.[0]?.profile?.name ||
-      contacts?.[0]?.profile?.name ||
-      undefined
-
-    // 2. Resolve contact + conversation
+    // 1. Resolve or create conversation & contact
     let conversationId: string | null = null
     let contactId: string | null = null
 
@@ -105,38 +97,68 @@ export async function handleCallsWebhookChange(options: HandleCallsWebhookOption
       console.error('[call-webhook] Failed to resolve conversation for phone:', fromPhone, err)
     }
 
-    // 3. Determine ring_user_ids (assigned agent or all team members)
-    let ringUserIds: string[] = []
+    // 2. Fetch presence rows for account members
+    const { data: presenceRows, error: presenceErr } = await supabaseAdmin()
+      .from('member_presence')
+      .select('user_id, status, last_seen_at')
+      .eq('account_id', accountId)
+
+    if (presenceErr) {
+      console.error('[call-webhook] Error fetching member_presence:', presenceErr)
+    }
+
+    const presenceMap = new Map<string, { status: StoredPresence; last_seen_at: string }>()
+    if (presenceRows) {
+      for (const p of presenceRows) {
+        presenceMap.set(p.user_id, {
+          status: p.status as StoredPresence,
+          last_seen_at: p.last_seen_at,
+        })
+      }
+    }
+
+    const now = Date.now()
+
+    // 3. Determine ring_user_ids (presence-aware)
+    let assignedAgentId: string | null = null
     if (conversationId) {
-      const { data: conv } = await supabaseAdmin()
+      const { data: conv, error: convErr } = await supabaseAdmin()
         .from('conversations')
         .select('assigned_agent_id')
         .eq('id', conversationId)
         .maybeSingle()
 
-      if (conv?.assigned_agent_id) {
-        ringUserIds = [conv.assigned_agent_id]
+      if (convErr) {
+        console.error('[call-webhook] Error fetching conversation assigned_agent_id:', convErr)
+      } else if (conv?.assigned_agent_id) {
+        assignedAgentId = conv.assigned_agent_id
       }
     }
 
-    if (ringUserIds.length === 0) {
-      const { data: members } = await supabaseAdmin()
-        .from('account_members')
-        .select('user_id')
+    let ringUserIds: string[] = []
+
+    if (assignedAgentId && isUserConnected(assignedAgentId, presenceMap, now)) {
+      // Assigned agent is connected -> ring assigned agent only
+      ringUserIds = [assignedAgentId]
+    } else {
+      // Assigned agent is disconnected or null -> ring all connected agent+ members from profiles
+      const { data: profiles, error: profErr } = await supabaseAdmin()
+        .from('profiles')
+        .select('user_id, account_role')
         .eq('account_id', accountId)
 
-      if (members && members.length > 0) {
-        ringUserIds = members.map((m: { user_id: string }) => m.user_id)
-      }
+      if (profErr) {
+        console.error('[call-webhook] Error fetching profiles for account:', profErr)
+      } else if (profiles) {
+        const connectedAgents = profiles
+          .filter((p) => {
+            const role = p.account_role as AccountRole
+            const isAgentOrHigher = role === 'agent' || role === 'admin' || role === 'owner'
+            return isAgentOrHigher && isUserConnected(p.user_id, presenceMap, now)
+          })
+          .map((p) => p.user_id)
 
-      const { data: acc } = await supabaseAdmin()
-        .from('accounts')
-        .select('owner_user_id')
-        .eq('id', accountId)
-        .maybeSingle()
-
-      if (acc?.owner_user_id && !ringUserIds.includes(acc.owner_user_id)) {
-        ringUserIds.push(acc.owner_user_id)
+        ringUserIds = connectedAgents
       }
     }
 
@@ -164,19 +186,22 @@ export async function handleCallsWebhookChange(options: HandleCallsWebhookOption
         )
 
       if (upsertErr) {
-        console.error('[call-webhook] Error upserting call_sessions row:', upsertErr)
+        console.error('[call-webhook] Error upserting call_sessions:', upsertErr)
+      } else {
+        console.log(`[call-webhook] Call session ringing created for waCallId=${waCallId}, ringUserIds=${ringUserIds.join(',')}`)
       }
-    } else if (eventName === 'terminate') {
+    } else if (eventName === 'terminate' || eventName === 'end' || eventName === 'rejected') {
       // 5. Handle call termination
-      const rawReason = (call.reason || call.status || '').toLowerCase()
-      const duration = typeof call.duration === 'number' ? call.duration : 0
+      const duration = typeof call.duration === 'number'
+        ? call.duration
+        : typeof call.duration === 'string'
+        ? parseInt(call.duration, 10) || 0
+        : 0
 
-      let outcome: 'accepted' | 'missed' | 'rejected' | 'failed' = 'missed'
-      if (rawReason.includes('accepted') || rawReason.includes('completed')) {
-        outcome = 'accepted'
-      } else if (rawReason.includes('rejected') || rawReason.includes('declined')) {
+      let outcome: 'accepted' | 'missed' | 'rejected' | 'failed' = 'failed'
+      if (call.reason === 'rejected' || call.status === 'rejected') {
         outcome = 'rejected'
-      } else if (rawReason.includes('missed')) {
+      } else if (call.reason === 'timeout' || call.reason === 'user_busy' || duration === 0) {
         outcome = 'missed'
       } else if (duration > 0) {
         outcome = 'accepted'
@@ -197,12 +222,11 @@ export async function handleCallsWebhookChange(options: HandleCallsWebhookOption
         console.error('[call-webhook] Error updating call_sessions on terminate:', sessionUpdateErr)
       }
 
-      // 5b. Insert terminal message into `messages`
+      // 5b. Insert terminal message into `messages` with content_text = NULL
       if (conversationId) {
-        let contentText = 'Llamada'
-        if (outcome === 'missed') contentText = 'Llamada perdida'
-        else if (outcome === 'rejected') contentText = 'Llamada rechazada'
-        else if (outcome === 'accepted') contentText = `Llamada · ${formatCallDuration(duration)}`
+        const lastMessageToken = outcome === 'accepted'
+          ? `[call:accepted:${duration}]`
+          : `[call:${outcome}]`
 
         const { error: msgInsertErr } = await supabaseAdmin()
           .from('messages')
@@ -210,7 +234,7 @@ export async function handleCallsWebhookChange(options: HandleCallsWebhookOption
             conversation_id: conversationId,
             sender_type: 'customer',
             content_type: 'call',
-            content_text: contentText,
+            content_text: null,
             call_outcome: outcome,
             call_duration_seconds: duration,
             message_id: waCallId,
@@ -224,11 +248,11 @@ export async function handleCallsWebhookChange(options: HandleCallsWebhookOption
             console.error('[call-webhook] Error inserting terminal call message:', msgInsertErr)
           }
         } else {
-          // 5c. Atomic update for conversation unread_count & preview
+          // 5c. Atomic update for conversation unread_count & last_message_text (neutral token)
           const incrementUnread = outcome === 'missed'
           const { error: rpcErr } = await supabaseAdmin().rpc('update_conversation_last_message', {
             p_conversation_id: conversationId,
-            p_last_message_text: contentText,
+            p_last_message_text: lastMessageToken,
             p_last_message_at: new Date().toISOString(),
             p_increment_unread: incrementUnread,
           })

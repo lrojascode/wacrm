@@ -386,6 +386,22 @@
       "networkError": "No se pudo conectar con el servidor."
     }
   },
+  "Calls": {
+    "incomingCall": "Llamada entrante",
+    "unknownContact": "Contacto desconocido",
+    "answer": "Contestar",
+    "reject": "Rechazar",
+    "hangup": "Colgar",
+    "muteMic": "Silenciar micrófono",
+    "unmuteMic": "Desactivar silencio",
+    "clickToViewChat": "Hacer clic para ver chat",
+    "contact": "Contacto",
+    "missedCall": "Llamada perdida",
+    "acceptedCall": "Llamada",
+    "rejectedCall": "Llamada rechazada",
+    "failedCall": "Llamada no contestada",
+    "call": "Llamada"
+  },
   "Contacts": {
     "page": {
       "title": "Contactos",

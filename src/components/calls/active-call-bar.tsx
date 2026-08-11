@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Mic, MicOff, PhoneOff } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import type { CallSessionData } from "@/hooks/use-incoming-calls";
 
@@ -26,8 +27,9 @@ export function ActiveCallBar({
   onToggleMute,
   onHangup,
 }: ActiveCallBarProps) {
+  const t = useTranslations("Calls");
   const router = useRouter();
-  const contactName = session.contact?.name || session.contact?.phone || "Contacto";
+  const contactName = session.contact?.name || session.contact?.phone || t("contact");
   const initial = contactName.charAt(0).toUpperCase();
 
   const handleContactClick = () => {
@@ -61,7 +63,7 @@ export function ActiveCallBar({
             {contactName}
           </span>
           <span className="hidden sm:inline-block text-emerald-200 text-xs">
-            (Hacer clic para ver chat)
+            ({t("clickToViewChat")})
           </span>
         </button>
 
@@ -80,7 +82,7 @@ export function ActiveCallBar({
             className={`h-8 px-2.5 text-white hover:bg-white/20 ${
               isMuted ? "bg-white/20 text-yellow-300" : ""
             }`}
-            title={isMuted ? "Desactivar silencio" : "Silenciar micrófono"}
+            title={isMuted ? t("unmuteMic") : t("muteMic")}
           >
             {isMuted ? <MicOff className="h-4 w-4 text-yellow-300" /> : <Mic className="h-4 w-4" />}
           </Button>
@@ -91,7 +93,7 @@ export function ActiveCallBar({
             className="h-8 px-3 bg-red-600 hover:bg-red-700 text-white font-medium shadow-sm"
           >
             <PhoneOff className="h-3.5 w-3.5 mr-1" />
-            <span>Colgar</span>
+            <span>{t("hangup")}</span>
           </Button>
         </div>
       </div>

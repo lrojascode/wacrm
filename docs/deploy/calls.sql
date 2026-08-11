@@ -78,12 +78,12 @@ CREATE TABLE IF NOT EXISTS call_sessions (
   ring_user_ids UUID[] NOT NULL DEFAULT '{}',
   answered_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'ringing' CHECK (status IN ('ringing', 'claimed', 'connected', 'ended', 'rejected', 'failed')),
-  end_reason TEXT,
+  end_reason TEXT CHECK (end_reason IS NULL OR end_reason IN ('user_busy', 'timeout', 'rejected', 'hung_up', 'failed', 'cancelled', 'completed', 'rejected_by_agent', 'hung_up_by_agent', 'pre_accept_failed', 'accept_failed', 'accepted', 'missed')),
   duration_seconds INTEGER,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   answered_at TIMESTAMPTZ,
   ended_at TIMESTAMPTZ,
-  expires_at TIMESTAMPTZ NOT NULL
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '45 seconds')
 );
 
 CREATE INDEX IF NOT EXISTS idx_call_sessions_account_status
@@ -115,7 +115,7 @@ BEGIN
 END $$;
 
 -- Atomic update for conversation last message & unread count
-CREATE OR REPLACE FUNCTION update_conversation_last_message(
+CREATE OR REPLACE FUNCTION public.update_conversation_last_message(
   p_conversation_id UUID,
   p_last_message_text TEXT,
   p_last_message_at TIMESTAMPTZ DEFAULT NOW(),
@@ -124,9 +124,14 @@ CREATE OR REPLACE FUNCTION update_conversation_last_message(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
-  UPDATE conversations
+  IF NOT EXISTS (SELECT 1 FROM public.conversations WHERE id = p_conversation_id) THEN
+    RETURN;
+  END IF;
+
+  UPDATE public.conversations
   SET
     last_message_text = p_last_message_text,
     last_message_at = p_last_message_at,
@@ -136,3 +141,6 @@ BEGIN
 END;
 $$;
 
+-- Restrict RPC execution strictly to service-role (webhook internal helper)
+REVOKE EXECUTE ON FUNCTION public.update_conversation_last_message(UUID, TEXT, TIMESTAMPTZ, BOOLEAN) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.update_conversation_last_message(UUID, TEXT, TIMESTAMPTZ, BOOLEAN) TO service_role;
