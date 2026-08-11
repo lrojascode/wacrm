@@ -343,25 +343,8 @@
       "call": "[Call]",
       "message": "[Message]",
       "cancelReply": "Cancel reply"
-    }
-  },
-  "Calls": {
-    "incomingCall": "Incoming call",
-    "unknownContact": "Unknown contact",
-    "answer": "Answer",
-    "reject": "Decline",
-    "hangup": "Hang up",
-    "muteMic": "Mute microphone",
-    "unmuteMic": "Unmute microphone",
-    "clickToViewChat": "Click to view chat",
-    "contact": "Contact",
-    "missedCall": "Missed call",
-    "acceptedCall": "Call",
-    "rejectedCall": "Call rejected",
-    "failedCall": "Call unanswered",
-    "call": "Call"
-  },
-  "templatePicker": {
+    },
+    "templatePicker": {
       "sendTemplate": "Send template",
       "fillPlaceholders": "Fill in the placeholders to render this template. Meta requires every variable to be set.",
       "pickTemplate": "Pick an approved WhatsApp template to send to this contact.",
@@ -402,6 +385,22 @@
       "updateError": "Couldn’t update the AI assistant.",
       "networkError": "Couldn’t reach the server."
     }
+  },
+  "Calls": {
+    "incomingCall": "Incoming call",
+    "unknownContact": "Unknown contact",
+    "answer": "Answer",
+    "reject": "Decline",
+    "hangup": "Hang up",
+    "muteMic": "Mute microphone",
+    "unmuteMic": "Unmute microphone",
+    "clickToViewChat": "Click to view chat",
+    "contact": "Contact",
+    "missedCall": "Missed call",
+    "acceptedCall": "Call",
+    "rejectedCall": "Call rejected",
+    "failedCall": "Call unanswered",
+    "call": "Call"
   },
   "Contacts": {
     "page": {

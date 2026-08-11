@@ -49,11 +49,6 @@ export interface WhatsAppCallsWebhookChange {
   }
 }
 
-function formatCallDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins}:${secs < 10 ? '0' : ''}${secs}`
-}
 
 function isUserConnected(
   userId: string,
@@ -91,6 +86,7 @@ export async function handleCallsWebhookChange(
 
     try {
       const resolved = await resolveConversationByPhone(
+        supabaseAdmin(),
         accountId,
         fromPhone,
         contactName

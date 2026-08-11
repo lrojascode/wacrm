@@ -343,25 +343,8 @@
       "call": "[Llamada]",
       "message": "[Mensaje]",
       "cancelReply": "Cancelar respuesta"
-    }
-  },
-  "Calls": {
-    "incomingCall": "Llamada entrante",
-    "unknownContact": "Contacto desconocido",
-    "answer": "Contestar",
-    "reject": "Rechazar",
-    "hangup": "Colgar",
-    "muteMic": "Silenciar micrófono",
-    "unmuteMic": "Desactivar silencio",
-    "clickToViewChat": "Hacer clic para ver chat",
-    "contact": "Contacto",
-    "missedCall": "Llamada perdida",
-    "acceptedCall": "Llamada",
-    "rejectedCall": "Llamada rechazada",
-    "failedCall": "Llamada no contestada",
-    "call": "Llamada"
-  },
-  "templatePicker": {
+    },
+    "templatePicker": {
       "sendTemplate": "Enviar plantilla",
       "fillPlaceholders": "Completa los campos para generar esta plantilla. Meta requiere que se establezca cada variable.",
       "pickTemplate": "Elige una plantilla de WhatsApp aprobada para enviar a este contacto.",
@@ -402,6 +385,22 @@
       "updateError": "No se pudo actualizar el asistente de IA.",
       "networkError": "No se pudo conectar con el servidor."
     }
+  },
+  "Calls": {
+    "incomingCall": "Llamada entrante",
+    "unknownContact": "Contacto desconocido",
+    "answer": "Contestar",
+    "reject": "Rechazar",
+    "hangup": "Colgar",
+    "muteMic": "Silenciar micrófono",
+    "unmuteMic": "Desactivar silencio",
+    "clickToViewChat": "Hacer clic para ver chat",
+    "contact": "Contacto",
+    "missedCall": "Llamada perdida",
+    "acceptedCall": "Llamada",
+    "rejectedCall": "Llamada rechazada",
+    "failedCall": "Llamada no contestada",
+    "call": "Llamada"
   },
   "Contacts": {
     "page": {
