@@ -343,8 +343,25 @@
       "call": "[Call]",
       "message": "[Message]",
       "cancelReply": "Cancel reply"
-    },
-    "templatePicker": {
+    }
+  },
+  "Calls": {
+    "incomingCall": "Incoming call",
+    "unknownContact": "Unknown contact",
+    "answer": "Answer",
+    "reject": "Decline",
+    "hangup": "Hang up",
+    "muteMic": "Mute microphone",
+    "unmuteMic": "Unmute microphone",
+    "clickToViewChat": "Click to view chat",
+    "contact": "Contact",
+    "missedCall": "Missed call",
+    "acceptedCall": "Call",
+    "rejectedCall": "Call rejected",
+    "failedCall": "Call unanswered",
+    "call": "Call"
+  },
+  "templatePicker": {
       "sendTemplate": "Send template",
       "fillPlaceholders": "Fill in the placeholders to render this template. Meta requires every variable to be set.",
       "pickTemplate": "Pick an approved WhatsApp template to send to this contact.",

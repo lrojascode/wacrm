@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Phone, PhoneOff, MessageSquare } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import type { CallSessionData } from "@/hooks/use-incoming-calls";
 
@@ -16,6 +17,7 @@ export function IncomingCallOverlay({
   onAnswer,
   onReject,
 }: IncomingCallOverlayProps) {
+  const t = useTranslations("Calls");
   const [secondsLeft, setSecondsLeft] = useState(30);
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export function IncomingCallOverlay({
     return () => window.clearInterval(interval);
   }, [onReject]);
 
-  const contactName = session.contact?.name || session.contact?.phone || "Contacto desconocido";
+  const contactName = session.contact?.name || session.contact?.phone || t("unknownContact");
   const contactPhone = session.contact?.phone || "";
   const contextLine = session.contact?.lastMessageText;
   const initial = contactName.charAt(0).toUpperCase();
@@ -88,7 +90,7 @@ export function IncomingCallOverlay({
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                Llamada entrante
+                {t("incomingCall")}
               </span>
               <span className="text-xs font-mono text-muted-foreground">{formattedSeconds}</span>
             </div>
@@ -119,7 +121,7 @@ export function IncomingCallOverlay({
             className="flex-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             <PhoneOff className="mr-1.5 h-4 w-4" />
-            Rechazar
+            {t("reject")}
           </Button>
 
           <Button
@@ -128,7 +130,7 @@ export function IncomingCallOverlay({
             className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
           >
             <Phone className="mr-1.5 h-4 w-4" />
-            Contestar
+            {t("answer")}
           </Button>
         </div>
       </div>
