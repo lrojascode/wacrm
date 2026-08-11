@@ -314,6 +314,11 @@
       "unsupported": "[Tipo de mensaje no compatible]",
       "aiBadge": "IA",
       "aiBadgeTitle": "Enviado automáticamente por el asistente de IA",
+      "callMissed": "Llamada perdida",
+      "callAccepted": "Llamada",
+      "callRejected": "Llamada rechazada",
+      "callFailed": "Llamada no contestada",
+      "callRespond": "Responder",
       "download": "Descargar",
       "close": "Cerrar"
     },
@@ -335,6 +340,7 @@
       "voiceMessage": "[Mensaje de voz]",
       "location": "[Ubicación]",
       "template": "[Plantilla]",
+      "call": "[Llamada]",
       "message": "[Mensaje]",
       "cancelReply": "Cancelar respuesta"
     },
@@ -379,6 +385,22 @@
       "updateError": "No se pudo actualizar el asistente de IA.",
       "networkError": "No se pudo conectar con el servidor."
     }
+  },
+  "Calls": {
+    "incomingCall": "Llamada entrante",
+    "unknownContact": "Contacto desconocido",
+    "answer": "Contestar",
+    "reject": "Rechazar",
+    "hangup": "Colgar",
+    "muteMic": "Silenciar micrófono",
+    "unmuteMic": "Desactivar silencio",
+    "clickToViewChat": "Hacer clic para ver chat",
+    "contact": "Contacto",
+    "missedCall": "Llamada perdida",
+    "acceptedCall": "Llamada",
+    "rejectedCall": "Llamada rechazada",
+    "failedCall": "Llamada no contestada",
+    "call": "Llamada"
   },
   "Contacts": {
     "page": {

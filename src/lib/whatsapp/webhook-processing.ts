@@ -15,6 +15,12 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import {
+  handleCallsWebhookChange,
+  isCallsWebhookField,
+  type WhatsAppCall,
+  type WhatsAppCallsWebhookChange,
+} from '@/lib/whatsapp/call-webhook'
 import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
 
 /**
@@ -89,6 +95,7 @@ export interface WhatsAppWebhookEntry {
       }
       contacts?: WhatsAppContact[]
       messages?: WhatsAppMessage[]
+      calls?: WhatsAppCall[]
       statuses?: Array<{
         id: string
         status: string
@@ -193,26 +200,9 @@ export async function processWebhook(
         }
       }
 
-      // Handle status updates
-      if (value.statuses) {
-        for (const status of value.statuses) {
-          await handleStatusUpdate(status)
-        }
-      }
+      // Find user's config by phone_number_id.
+      if (!phoneNumberId) continue
 
-      // Handle incoming messages. `contacts` is deliberately NOT part of
-      // this guard: it only ever carried the display name, while the
-      // identity that matters — the sender's number — comes from
-      // `message.from`. Requiring it meant a payload that arrived with
-      // `contacts: []` (or none at all) silently dropped a real customer
-      // message that we had everything we needed to store.
-      if (!value.messages?.length) continue
-
-      // Find user's config by phone_number_id. `.single()` returns
-      // PGRST116 for both 0 rows AND ≥2 rows — distinguish them so
-      // operators see the real cause in logs. ≥2 rows shouldn't happen
-      // post-migration 013 (UNIQUE constraint), but a row created
-      // before the constraint, or a race, would still surface here.
       const { data: configRows, error: configError } = await supabaseAdmin()
         .from('whatsapp_config')
         .select('*')
@@ -244,6 +234,28 @@ export async function processWebhook(
       }
 
       const config = configRows[0]
+      const accountId = config.account_id
+
+      // Handle status updates
+      if (value.statuses) {
+        for (const status of value.statuses) {
+          await handleStatusUpdate(status)
+        }
+      }
+
+      // Handle call events
+      if (value.calls?.length || isCallsWebhookField(change.field)) {
+        if (value.calls?.length) {
+          await handleCallsWebhookChange(
+            accountId,
+            change as WhatsAppCallsWebhookChange
+          )
+        }
+        if (!value.messages?.length) continue
+      }
+
+      // Handle incoming messages.
+      if (!value.messages?.length) continue
 
       const decryptedAccessToken = decrypt(config.access_token)
 

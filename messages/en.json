@@ -314,6 +314,11 @@
       "unsupported": "[Unsupported message type]",
       "aiBadge": "AI",
       "aiBadgeTitle": "Sent automatically by the AI assistant",
+      "callMissed": "Missed call",
+      "callAccepted": "Call",
+      "callRejected": "Call rejected",
+      "callFailed": "Call unanswered",
+      "callRespond": "Reply",
       "download": "Download",
       "close": "Close"
     },
@@ -335,6 +340,7 @@
       "voiceMessage": "[Voice message]",
       "location": "[Location]",
       "template": "[Template]",
+      "call": "[Call]",
       "message": "[Message]",
       "cancelReply": "Cancel reply"
     },
@@ -379,6 +385,22 @@
       "updateError": "Couldn’t update the AI assistant.",
       "networkError": "Couldn’t reach the server."
     }
+  },
+  "Calls": {
+    "incomingCall": "Incoming call",
+    "unknownContact": "Unknown contact",
+    "answer": "Answer",
+    "reject": "Decline",
+    "hangup": "Hang up",
+    "muteMic": "Mute microphone",
+    "unmuteMic": "Unmute microphone",
+    "clickToViewChat": "Click to view chat",
+    "contact": "Contact",
+    "missedCall": "Missed call",
+    "acceptedCall": "Call",
+    "rejectedCall": "Call rejected",
+    "failedCall": "Call unanswered",
+    "call": "Call"
   },
   "Contacts": {
     "page": {
