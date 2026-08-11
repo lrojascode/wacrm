@@ -91,6 +91,8 @@ export function buildReplyPreview(message: Message, t: ReturnType<typeof useTran
       return t("location");
     case "template":
       return t("template");
+    case "call":
+      return t("call");
     default:
       return t("message");
   }

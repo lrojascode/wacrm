@@ -14,6 +14,9 @@ import {
   ImageOff,
   CornerDownLeft,
   Sparkles,
+  Phone,
+  PhoneMissed,
+  PhoneOff,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -268,6 +271,59 @@ export function MessageBubble({
 
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
   const time = format(new Date(message.created_at), "HH:mm");
+
+  if (message.content_type === "call") {
+    const outcome = message.call_outcome || "missed";
+    const duration = message.call_duration_seconds;
+    const formattedDuration = duration
+      ? `${Math.floor(duration / 60)}:${duration % 60 < 10 ? "0" : ""}${duration % 60}`
+      : null;
+
+    const isMissed = outcome === "missed";
+
+    const handleFocusComposer = () => {
+      const textarea = document.querySelector("textarea");
+      if (textarea) {
+        textarea.focus();
+      }
+    };
+
+    return (
+      <div className="my-2 flex justify-center w-full">
+        <div className="inline-flex items-center gap-2 rounded-full bg-muted/60 px-3.5 py-1 text-xs text-muted-foreground shadow-xs border border-border/40">
+          {isMissed ? (
+            <PhoneMissed className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+          ) : outcome === "accepted" ? (
+            <Phone className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+          ) : (
+            <PhoneOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          )}
+
+          <span className={cn("font-medium", isMissed && "text-rose-500 dark:text-rose-400")}>
+            {isMissed
+              ? t("callMissed")
+              : outcome === "accepted"
+                ? `${t("callAccepted")}${formattedDuration ? ` · ${formattedDuration}` : ""}`
+                : outcome === "rejected"
+                  ? t("callRejected")
+                  : t("callFailed")}
+          </span>
+
+          <span className="text-[10px] opacity-75">{time}</span>
+
+          {isMissed && (
+            <button
+              type="button"
+              onClick={handleFocusComposer}
+              className="ml-1 text-[11px] font-semibold text-primary underline underline-offset-2 hover:opacity-80 transition-opacity"
+            >
+              {t("callRespond")}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Row alignment + width cap are owned by <MessageActions> so its hover
   // group matches the bubble's content area, not the full row.
