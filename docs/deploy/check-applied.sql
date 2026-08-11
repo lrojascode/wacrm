@@ -136,6 +136,13 @@ WITH checks AS (
     to_regclass('public.contact_tasks') IS NOT NULL
       AND to_regprocedure('public.process_due_tasks()') IS NOT NULL,
     'docs/deploy/contact-tasks.sql'
+  UNION ALL
+  SELECT
+    '050 calls',
+    to_regclass('public.call_sessions') IS NOT NULL
+      AND EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name = 'messages' AND column_name = 'call_outcome'),
+    'docs/deploy/calls.sql'
 )
 SELECT
   release,
@@ -143,3 +150,4 @@ SELECT
   bundle
 FROM checks
 ORDER BY release;
+
