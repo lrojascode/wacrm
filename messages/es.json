@@ -314,6 +314,11 @@
       "unsupported": "[Tipo de mensaje no compatible]",
       "aiBadge": "IA",
       "aiBadgeTitle": "Enviado automáticamente por el asistente de IA",
+      "callMissed": "Llamada perdida",
+      "callAccepted": "Llamada",
+      "callRejected": "Llamada rechazada",
+      "callFailed": "Llamada no contestada",
+      "callRespond": "Responder",
       "download": "Descargar",
       "close": "Cerrar"
     },
@@ -335,6 +340,7 @@
       "voiceMessage": "[Mensaje de voz]",
       "location": "[Ubicación]",
       "template": "[Plantilla]",
+      "call": "[Llamada]",
       "message": "[Mensaje]",
       "cancelReply": "Cancelar respuesta"
     },

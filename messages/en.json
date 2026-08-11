@@ -314,6 +314,11 @@
       "unsupported": "[Unsupported message type]",
       "aiBadge": "AI",
       "aiBadgeTitle": "Sent automatically by the AI assistant",
+      "callMissed": "Missed call",
+      "callAccepted": "Call",
+      "callRejected": "Call rejected",
+      "callFailed": "Call unanswered",
+      "callRespond": "Reply",
       "download": "Download",
       "close": "Close"
     },
@@ -335,6 +340,7 @@
       "voiceMessage": "[Voice message]",
       "location": "[Location]",
       "template": "[Template]",
+      "call": "[Call]",
       "message": "[Message]",
       "cancelReply": "Cancel reply"
     },

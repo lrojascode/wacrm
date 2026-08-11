@@ -241,7 +241,9 @@ export type ContentType =
   | 'location'
   | 'template'
   /** Customer tapped a reply button or list row on a message we sent. */
-  | 'interactive';
+  | 'interactive'
+  /** WhatsApp incoming call event (missed, accepted, rejected, failed). */
+  | 'call';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Message {
@@ -278,6 +280,8 @@ export interface Message {
    * badge in the inbox. Migration 033.
    */
   ai_generated?: boolean;
+  call_outcome?: 'accepted' | 'missed' | 'rejected' | 'failed' | null;
+  call_duration_seconds?: number | null;
 }
 
 export type ReactionActor = 'customer' | 'agent';
