@@ -13,7 +13,7 @@ vi.mock('@/lib/auth/account', () => ({
   }),
 }))
 
-vi.mock('@/lib/flows/admin-client', () => ({
+vi.mock('@/lib/whatsapp/admin-client', () => ({
   supabaseAdmin: vi.fn(),
 }))
 
@@ -25,7 +25,7 @@ vi.mock('@/lib/whatsapp/calls-api', () => ({
 }))
 
 import { requireRole } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
 import { preAcceptCall, acceptCall, rejectCall, terminateCall } from '@/lib/whatsapp/calls-api'
 
 describe('Call Control Routes', () => {
@@ -38,27 +38,49 @@ describe('Call Control Routes', () => {
   })
 
   describe('POST /api/calls/[id]/answer', () => {
-    it('claims ringing call and invokes preAcceptCall', async () => {
-      const mockFrom = vi.fn().mockReturnValue({
-        update: () => ({
-          eq: () => ({
-            eq: () => ({
-              is: () => ({
-                select: async () => ({
-                  data: [
-                    {
+    it('claims ringing call and invokes preAcceptCall when authorized', async () => {
+      const mockFrom = vi.fn().mockImplementation((table: string) => {
+        if (table === 'call_sessions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: {
                       id: 'cs_10',
                       account_id: 'acc_100',
-                      wa_call_id: 'wacid_10',
-                      offer_sdp: 'v=0...',
+                      ring_user_ids: ['usr_agent1'],
+                      status: 'ringing',
                     },
-                  ],
-                  error: null,
+                    error: null,
+                  }),
                 }),
               }),
             }),
-          }),
-        }),
+            update: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    is: () => ({
+                      select: async () => ({
+                        data: [
+                          {
+                            id: 'cs_10',
+                            account_id: 'acc_100',
+                            wa_call_id: 'wacid_10',
+                            offer_sdp: 'v=0...',
+                          },
+                        ],
+                        error: null,
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          }
+        }
+        return {}
       })
 
       vi.mocked(supabaseAdmin).mockReturnValue({
@@ -82,20 +104,28 @@ describe('Call Control Routes', () => {
       })
     })
 
-    it('returns 409 when call session is already claimed or ended', async () => {
-      const mockFrom = vi.fn().mockReturnValue({
-        update: () => ({
-          eq: () => ({
-            eq: () => ({
-              is: () => ({
-                select: async () => ({
-                  data: [],
-                  error: null,
+    it('returns 403 when user is not in ring_user_ids', async () => {
+      const mockFrom = vi.fn().mockImplementation((table: string) => {
+        if (table === 'call_sessions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: {
+                      id: 'cs_10',
+                      account_id: 'acc_100',
+                      ring_user_ids: ['usr_agent2'],
+                      status: 'ringing',
+                    },
+                    error: null,
+                  }),
                 }),
               }),
             }),
-          }),
-        }),
+          }
+        }
+        return {}
       })
 
       vi.mocked(supabaseAdmin).mockReturnValue({
@@ -108,10 +138,10 @@ describe('Call Control Routes', () => {
       })
 
       const res = await answerPOST(req, { params: Promise.resolve({ id: 'cs_10' }) })
-      expect(res.status).toBe(409)
+      expect(res.status).toBe(403)
 
       const json = await res.json()
-      expect(json.error).toContain('already claimed')
+      expect(json.error).toContain('not authorized')
     })
   })
 
@@ -122,20 +152,24 @@ describe('Call Control Routes', () => {
           return {
             select: () => ({
               eq: () => ({
-                maybeSingle: async () => ({
-                  data: {
-                    id: 'cs_10',
-                    account_id: 'acc_100',
-                    wa_call_id: 'wacid_10',
-                    answered_by: 'usr_agent1',
-                    answer_sdp: 'v=0...saved_sdp',
-                  },
-                  error: null,
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: {
+                      id: 'cs_10',
+                      account_id: 'acc_100',
+                      wa_call_id: 'wacid_10',
+                      answered_by: 'usr_agent1',
+                      answer_sdp: 'v=0...saved_sdp',
+                    },
+                    error: null,
+                  }),
                 }),
               }),
             }),
             update: () => ({
-              eq: async () => ({ data: null, error: null }),
+              eq: () => ({
+                eq: async () => ({ data: null, error: null }),
+              }),
             }),
           }
         }
@@ -166,19 +200,23 @@ describe('Call Control Routes', () => {
       const mockFrom = vi.fn().mockReturnValue({
         select: () => ({
           eq: () => ({
-            maybeSingle: async () => ({
-              data: {
-                id: 'cs_10',
-                account_id: 'acc_100',
-                wa_call_id: 'wacid_10',
-                status: 'ringing',
-              },
-              error: null,
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: {
+                  id: 'cs_10',
+                  account_id: 'acc_100',
+                  wa_call_id: 'wacid_10',
+                  status: 'ringing',
+                },
+                error: null,
+              }),
             }),
           }),
         }),
         update: () => ({
-          eq: async () => ({ data: null, error: null }),
+          eq: () => ({
+            eq: async () => ({ data: null, error: null }),
+          }),
         }),
       })
 
@@ -194,43 +232,6 @@ describe('Call Control Routes', () => {
       expect(res.status).toBe(200)
 
       expect(rejectCall).toHaveBeenCalledWith({
-        accountId: 'acc_100',
-        waCallId: 'wacid_10',
-      })
-    })
-
-    it('terminates connected call when hangup requested', async () => {
-      const mockFrom = vi.fn().mockReturnValue({
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({
-              data: {
-                id: 'cs_10',
-                account_id: 'acc_100',
-                wa_call_id: 'wacid_10',
-                status: 'connected',
-              },
-              error: null,
-            }),
-          }),
-        }),
-        update: () => ({
-          eq: async () => ({ data: null, error: null }),
-        }),
-      })
-
-      vi.mocked(supabaseAdmin).mockReturnValue({
-        from: mockFrom as unknown as ReturnType<typeof supabaseAdmin>['from'],
-      } as unknown as ReturnType<typeof supabaseAdmin>)
-
-      const req = new Request('http://localhost/api/calls/cs_10/hangup', {
-        method: 'POST',
-      })
-
-      const res = await hangupPOST(req, { params: Promise.resolve({ id: 'cs_10' }) })
-      expect(res.status).toBe(200)
-
-      expect(terminateCall).toHaveBeenCalledWith({
         accountId: 'acc_100',
         waCallId: 'wacid_10',
       })

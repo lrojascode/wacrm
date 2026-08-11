@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
 import { acceptCall } from '@/lib/whatsapp/calls-api'
 
 export async function POST(
@@ -15,6 +15,7 @@ export async function POST(
       .from('call_sessions')
       .select('*')
       .eq('id', callSessionId)
+      .eq('account_id', ctx.accountId)
       .maybeSingle()
 
     if (fetchErr || !session) {
@@ -43,6 +44,7 @@ export async function POST(
         .from('call_sessions')
         .update({ status: 'failed', end_reason: msg })
         .eq('id', callSessionId)
+        .eq('account_id', ctx.accountId)
 
       return NextResponse.json({ error: msg }, { status: 502 })
     }
@@ -52,6 +54,7 @@ export async function POST(
       .from('call_sessions')
       .update({ status: 'connected' })
       .eq('id', callSessionId)
+      .eq('account_id', ctx.accountId)
 
     return NextResponse.json({ success: true })
   } catch (err) {
