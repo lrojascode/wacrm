@@ -37,18 +37,30 @@ export interface TerminateCallOptions extends MetaCallsApiOptions {
 
 export type GetCallSettingsOptions = MetaCallsApiOptions
 
+/**
+ * `NOT_SET` is a real value Meta returns, and it is NOT the same as
+ * `DISABLED`: it means Calling was never configured on the number, so no
+ * POST to /settings has ever been made. Observed live against a real
+ * number — collapsing it into DISABLED loses the distinction between
+ * "someone turned this off" and "nobody has set it up yet", which is
+ * exactly what a diagnostic exists to tell apart.
+ */
+export type CallingStatus = 'ENABLED' | 'DISABLED' | 'NOT_SET'
+export type CallIconVisibility = 'DEFAULT' | 'DISABLE_ALL' | 'NOT_SET'
+export type CallbackPermissionStatus = 'ENABLED' | 'DISABLED' | 'NOT_SET'
+
 export interface CallSettingsResult {
   /** Whether Calling is enabled on the number at all. */
-  status: 'ENABLED' | 'DISABLED'
+  status: CallingStatus
   /**
    * Whether the call button is shown to customers inside WhatsApp.
    * `DISABLE_ALL` hides it, which stops every inbound call at the source
    * — so it has to be surfaced alongside `status` when diagnosing "no
    * one can call us".
    */
-  callIconVisibility: 'DEFAULT' | 'DISABLE_ALL' | null
+  callIconVisibility: CallIconVisibility | null
   /** Business-initiated callback permission. This product keeps it off. */
-  callbackPermissionStatus: 'ENABLED' | 'DISABLED' | null
+  callbackPermissionStatus: CallbackPermissionStatus | null
 }
 
 interface MetaErrorResponse {
@@ -238,14 +250,17 @@ export async function getCallSettings(options: GetCallSettingsOptions): Promise<
 
   const data = (await response.json()) as {
     calling?: {
-      status?: 'ENABLED' | 'DISABLED'
-      call_icon_visibility?: 'DEFAULT' | 'DISABLE_ALL'
-      callback_permission_status?: 'ENABLED' | 'DISABLED'
+      status?: CallingStatus
+      call_icon_visibility?: CallIconVisibility
+      callback_permission_status?: CallbackPermissionStatus
     }
   }
 
+  // A number with no `calling` block at all has never been provisioned
+  // for Calling, which is the same situation NOT_SET describes — report
+  // it as such rather than inventing a DISABLED that nobody chose.
   return {
-    status: data.calling?.status || 'DISABLED',
+    status: data.calling?.status ?? 'NOT_SET',
     callIconVisibility: data.calling?.call_icon_visibility ?? null,
     callbackPermissionStatus: data.calling?.callback_permission_status ?? null,
   }
