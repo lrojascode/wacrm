@@ -133,10 +133,16 @@ describe('calls-api', () => {
     )
   })
 
-  it('queries getCallSettings and parses calling status', async () => {
+  it('queries getCallSettings on the /settings edge and parses the calling block', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ calling: { status: 'ENABLED' } }),
+      json: async () => ({
+        calling: {
+          status: 'ENABLED',
+          call_icon_visibility: 'DEFAULT',
+          callback_permission_status: 'DISABLED',
+        },
+      }),
     })
     global.fetch = fetchMock
 
@@ -145,9 +151,13 @@ describe('calls-api', () => {
       accessToken: 'test_token',
     })
 
-    expect(res).toEqual({ status: 'ENABLED' })
+    expect(res).toEqual({
+      status: 'ENABLED',
+      callIconVisibility: 'DEFAULT',
+      callbackPermissionStatus: 'DISABLED',
+    })
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://graph.facebook.com/v23.0/12345?fields=calling',
+      'https://graph.facebook.com/v23.0/12345/settings',
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
@@ -155,6 +165,20 @@ describe('calls-api', () => {
         }),
       })
     )
+  })
+
+  it('reports DISABLED when the calling block is absent entirely', async () => {
+    // A number that was never provisioned for Calling returns settings
+    // with no `calling` key at all — that must read as DISABLED, not crash.
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+
+    const res = await getCallSettings({ phoneNumberId: '12345', accessToken: 't' })
+
+    expect(res).toEqual({
+      status: 'DISABLED',
+      callIconVisibility: null,
+      callbackPermissionStatus: null,
+    })
   })
 
   it('throws error message from Meta error response when fetch fails', async () => {
