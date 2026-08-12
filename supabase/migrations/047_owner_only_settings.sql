@@ -122,7 +122,13 @@ GRANT UPDATE (name, default_currency) ON accounts TO authenticated;
 -- ============================================================
 -- 6. brand-assets storage — admin+ -> owner
 -- ============================================================
+-- Both names are dropped, not just the old one: this section RENAMES the
+-- policies (Admins -> Owners), so on a re-run the old name is already
+-- gone and CREATE would fail on the new name still being there. Dropping
+-- only the pre-rename name is what made this file non-idempotent, which
+-- the deploy bundles explicitly promise it is not.
 DROP POLICY IF EXISTS "Admins can upload brand assets" ON storage.objects;
+DROP POLICY IF EXISTS "Owners can upload brand assets" ON storage.objects;
 CREATE POLICY "Owners can upload brand assets"
   ON storage.objects FOR INSERT
   WITH CHECK (
@@ -136,6 +142,7 @@ CREATE POLICY "Owners can upload brand assets"
   );
 
 DROP POLICY IF EXISTS "Admins can update brand assets" ON storage.objects;
+DROP POLICY IF EXISTS "Owners can update brand assets" ON storage.objects;
 CREATE POLICY "Owners can update brand assets"
   ON storage.objects FOR UPDATE
   USING (
@@ -149,6 +156,7 @@ CREATE POLICY "Owners can update brand assets"
   );
 
 DROP POLICY IF EXISTS "Admins can delete brand assets" ON storage.objects;
+DROP POLICY IF EXISTS "Owners can delete brand assets" ON storage.objects;
 CREATE POLICY "Owners can delete brand assets"
   ON storage.objects FOR DELETE
   USING (
