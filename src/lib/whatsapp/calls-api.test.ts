@@ -167,15 +167,40 @@ describe('calls-api', () => {
     )
   })
 
-  it('reports DISABLED when the calling block is absent entirely', async () => {
-    // A number that was never provisioned for Calling returns settings
-    // with no `calling` key at all — that must read as DISABLED, not crash.
+  it('passes NOT_SET through instead of flattening it to DISABLED', async () => {
+    // Exactly what a real, never-configured number returned. NOT_SET is
+    // not DISABLED: nobody turned Calling off, it was never set up. The
+    // previous union omitted this value, so the runtime result escaped
+    // its own declared type.
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        calling: {
+          status: 'NOT_SET',
+          call_icon_visibility: 'NOT_SET',
+          callback_permission_status: 'NOT_SET',
+        },
+        storage_configuration: { status: 'DEFAULT' },
+      }),
+    })
+
+    const res = await getCallSettings({ phoneNumberId: '12345', accessToken: 't' })
+
+    expect(res).toEqual({
+      status: 'NOT_SET',
+      callIconVisibility: 'NOT_SET',
+      callbackPermissionStatus: 'NOT_SET',
+    })
+  })
+
+  it('reports NOT_SET when the calling block is absent entirely', async () => {
+    // No `calling` key at all is the same situation as NOT_SET.
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
 
     const res = await getCallSettings({ phoneNumberId: '12345', accessToken: 't' })
 
     expect(res).toEqual({
-      status: 'DISABLED',
+      status: 'NOT_SET',
       callIconVisibility: null,
       callbackPermissionStatus: null,
     })
