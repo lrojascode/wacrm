@@ -38,7 +38,17 @@ export interface TerminateCallOptions extends MetaCallsApiOptions {
 export type GetCallSettingsOptions = MetaCallsApiOptions
 
 export interface CallSettingsResult {
+  /** Whether Calling is enabled on the number at all. */
   status: 'ENABLED' | 'DISABLED'
+  /**
+   * Whether the call button is shown to customers inside WhatsApp.
+   * `DISABLE_ALL` hides it, which stops every inbound call at the source
+   * — so it has to be surfaced alongside `status` when diagnosing "no
+   * one can call us".
+   */
+  callIconVisibility: 'DEFAULT' | 'DISABLE_ALL' | null
+  /** Business-initiated callback permission. This product keeps it off. */
+  callbackPermissionStatus: 'ENABLED' | 'DISABLED' | null
 }
 
 interface MetaErrorResponse {
@@ -203,10 +213,17 @@ export async function terminateCall(options: TerminateCallOptions): Promise<{ su
 
 /**
  * Query calling capability status for the WhatsApp Business phone number.
+ *
+ * Reads the `/settings` edge, not `?fields=calling` on the phone-number
+ * node: calling configuration lives on the settings edge, and the field
+ * projection does not return it. Getting this wrong is silent — the
+ * request succeeds and `calling` is simply absent, which this function
+ * would have reported as DISABLED on a number where calling was in fact
+ * enabled.
  */
 export async function getCallSettings(options: GetCallSettingsOptions): Promise<CallSettingsResult> {
   const { phoneNumberId, accessToken } = await resolveCredentials(options)
-  const url = `${META_CALLS_API_BASE}/${phoneNumberId}?fields=calling`
+  const url = `${META_CALLS_API_BASE}/${phoneNumberId}/settings`
 
   const response = await fetch(url, {
     method: 'GET',
@@ -219,8 +236,17 @@ export async function getCallSettings(options: GetCallSettingsOptions): Promise<
     await throwMetaError(response, `Failed to fetch call settings for phone number ${phoneNumberId}`)
   }
 
-  const data = (await response.json()) as { calling?: { status?: 'ENABLED' | 'DISABLED' } }
+  const data = (await response.json()) as {
+    calling?: {
+      status?: 'ENABLED' | 'DISABLED'
+      call_icon_visibility?: 'DEFAULT' | 'DISABLE_ALL'
+      callback_permission_status?: 'ENABLED' | 'DISABLED'
+    }
+  }
+
   return {
     status: data.calling?.status || 'DISABLED',
+    callIconVisibility: data.calling?.call_icon_visibility ?? null,
+    callbackPermissionStatus: data.calling?.callback_permission_status ?? null,
   }
 }
