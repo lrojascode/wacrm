@@ -93,11 +93,11 @@ export async function PUT(
 ) {
   const { id } = await context.params
 
-  // Writes require at least `agent` — the RLS flows_update policy demands
-  // it, but this route mutates via the service-role client which bypasses
-  // RLS, so the role must be enforced here (a viewer passes ownership).
+  // Writes are admin+ (see POST /api/flows) — this route mutates via
+  // the service-role client which bypasses RLS entirely, so the role
+  // must be enforced here.
   try {
-    await requireRole('agent')
+    await requireRole('admin')
   } catch (err) {
     return toErrorResponse(err)
   }
@@ -189,10 +189,10 @@ export async function DELETE(
 ) {
   const { id } = await context.params
 
-  // Writes require at least `agent` — see the PUT handler note. The
-  // service-role client below bypasses the agent-gated flows_delete RLS.
+  // Writes are admin+ — see the PUT handler note. The service-role
+  // client below bypasses the flows_delete RLS entirely.
   try {
-    await requireRole('agent')
+    await requireRole('admin')
   } catch (err) {
     return toErrorResponse(err)
   }

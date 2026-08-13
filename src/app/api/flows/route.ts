@@ -5,13 +5,13 @@ import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { getFlowTemplate } from '@/lib/flows/templates'
 
 /**
- * GET /api/flows — list the caller's flows.
- * POST /api/flows — create a new (draft) flow.
+ * GET /api/flows — list the caller's flows. Any account member (RLS-scoped).
+ * POST /api/flows — create a new (draft) flow. Admin+ only.
  *
- * Available to every authenticated user. The previous per-account
- * beta gate was removed when Flows went to soft-GA; the UI still
- * shows a "Beta" label so users know the surface is young, but the
- * routes themselves are open.
+ * The previous per-account beta gate was removed when Flows went to
+ * soft-GA; the UI still shows a "Beta" label so users know the
+ * surface is young. Admin+ was added later to keep flow-building out
+ * of the agent role's day-to-day surface — see flows/page.tsx.
  */
 
 async function requireUser(): Promise<
@@ -46,11 +46,14 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  // Creating a flow is a write — the RLS flows_insert policy requires
-  // `agent`, but this route inserts via the service-role client which
-  // bypasses RLS, so the role must be enforced here.
+  // Creating a flow is a write, enforced via the service-role client
+  // which bypasses the (agent-level) flows_insert RLS policy — so the
+  // role has to be enforced here instead. Admin+ only: Flows is a
+  // configuration/automation-building surface, not day-to-day agent
+  // work (the page itself is hidden from agent/viewer — see
+  // useRequireRole in flows/page.tsx).
   try {
-    await requireRole('agent')
+    await requireRole('admin')
   } catch (err) {
     return toErrorResponse(err)
   }

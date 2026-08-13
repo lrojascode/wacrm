@@ -7,11 +7,14 @@ import { AiPlayground } from '@/components/agents/ai-playground';
 import { AiUsageCard } from '@/components/agents/ai-usage';
 import { AiConfig } from '@/components/settings/ai-config';
 import { useAuth } from '@/hooks/use-auth';
+import { useRequireRole } from '@/hooks/use-require-role';
 import { canEditSettings } from '@/lib/auth/roles';
 
 type Tab = 'playground' | 'setup' | 'usage';
 
+// Admin+ only — useRequireRole bounces agent/viewer to /dashboard.
 export default function AgentsPage() {
+  const allowed = useRequireRole('admin');
   const { accountRole } = useAuth();
   const canViewUsage = accountRole ? canEditSettings(accountRole) : false;
   const [tab, setTab] = useState<Tab>('playground');
@@ -35,6 +38,8 @@ export default function AgentsPage() {
       cancelled = true;
     };
   }, []);
+
+  if (!allowed) return null;
 
   return (
     <div>

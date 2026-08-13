@@ -1,9 +1,9 @@
 -- ============================================================
 -- wacrm — full install (fresh deployment, all migrations)
--- Migrations 001 through 050, in order.
+-- Migrations 001 through 051, in order.
 --
 -- GENERATED FILE — do not edit. Regenerate with:
---   ./scripts/deploy/bundle-migrations.sh docs/deploy/full-install.sql 001 002 003 004 005 006 007 008 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024 025 026 027 028 029 030 031 032 033 034 035 036 037 038 039 040 041 042 043 044 045 046 047 048 049 050
+--   ./scripts/deploy/bundle-migrations.sh docs/deploy/full-install.sql 001 002 003 004 005 006 007 008 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024 025 026 027 028 029 030 031 032 033 034 035 036 037 038 039 040 041 042 043 044 045 046 047 048 049 050 051
 --
 -- HOW TO APPLY
 --   1. Supabase Cloud -> SQL Editor -> New query.
@@ -7001,3 +7001,52 @@ $$;
 -- Restrict RPC execution strictly to service-role (webhook internal helper)
 REVOKE EXECUTE ON FUNCTION public.update_conversation_last_message(UUID, TEXT, TIMESTAMPTZ, BOOLEAN) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.update_conversation_last_message(UUID, TEXT, TIMESTAMPTZ, BOOLEAN) TO service_role;
+
+-- ############################################################
+-- ##  051_account_appearance.sql
+-- ############################################################
+
+-- ============================================================
+-- 051_account_appearance.sql
+--
+-- Account-wide appearance (accent theme + light/dark mode). Previously
+-- each user’s choice lived in their own browser’s localStorage only
+-- (see src/hooks/use-theme.tsx) — this adds a shared default on the
+-- account row so the owner’s pick becomes what every member sees.
+--
+-- Write access
+--   These columns are deliberately left OUT of the `GRANT UPDATE
+--   (name, default_currency) ON accounts TO authenticated` from
+--   migration 047 — no GRANT statement here means `authenticated`
+--   cannot write them at all, session or not. The only path is
+--   PUT /api/account/appearance, which is owner-gated
+--   (requireRole(’owner’)) and writes through the service-role client,
+--   the same shape as /api/account/brand for brand_name / logo_url.
+--
+-- Read access is unaffected: accounts_update is the only revoked verb,
+-- so accounts_select (`is_account_member(id)`) already lets every
+-- member read these two columns, which is what lets everyone’s
+-- session pick up the owner’s choice.
+--
+-- Idempotent — safe to re-run.
+-- ============================================================
+
+ALTER TABLE accounts
+  ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'violet';
+
+ALTER TABLE accounts
+  DROP CONSTRAINT IF EXISTS accounts_theme_check;
+ALTER TABLE accounts
+  ADD CONSTRAINT accounts_theme_check
+  CHECK (theme IN ('violet', 'emerald', 'cobalt', 'amber', 'rose'));
+
+ALTER TABLE accounts
+  ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'dark';
+
+ALTER TABLE accounts
+  DROP CONSTRAINT IF EXISTS accounts_mode_check;
+ALTER TABLE accounts
+  ADD CONSTRAINT accounts_mode_check
+  CHECK (mode IN ('light', 'dark'));
+
+NOTIFY pgrst, 'reload schema';

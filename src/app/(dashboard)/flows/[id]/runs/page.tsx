@@ -22,10 +22,12 @@ import { dateFnsLocale } from "@/lib/i18n/date-locale";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useRequireRole } from "@/hooks/use-require-role";
 
 /**
  * Run history viewer.
  *
+ * Admin+ only — `useRequireRole` bounces agent/viewer to /dashboard.
  * Lists the 50 most recent runs for a flow, newest first. Each row
  * collapses to a one-liner (contact + status + time); expanding shows
  * the full `flow_run_events` timeline for that run — useful for
@@ -101,6 +103,7 @@ export default function FlowRunsPage() {
   const params = useParams<{ id: string }>();
   const t = useTranslations("Flows.logs");
   const tEdit = useTranslations("Flows.edit");
+  const allowed = useRequireRole("admin");
 
   const [flow, setFlow] = useState<{ id: string; name: string } | null>(null);
   const [runs, setRuns] = useState<RunRow[]>([]);
@@ -153,7 +156,7 @@ export default function FlowRunsPage() {
     });
   }
 
-  if (loading) {
+  if (!allowed || loading) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

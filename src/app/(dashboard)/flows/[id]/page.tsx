@@ -8,24 +8,23 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
 import { FlowEditorShell } from "@/components/flows/flow-editor-shell";
+import { useRequireRole } from "@/hooks/use-require-role";
 import type { FlowRow, FlowNodeRow } from "@/lib/flows/types";
 
 /**
  * Flow editor shell.
  *
+ * Admin+ only — `useRequireRole` bounces agent/viewer to /dashboard.
  * Loads `{flow, nodes}` from `/api/flows/[id]` and hands it to
  * `<FlowBuilder>`. Owns the loading/error state so the builder can
- * focus purely on editing.
- *
- * Open to every authenticated user — the beta gate that previously
- * 404'd non-beta accounts was removed in PR #134. The API still
- * 404s on a flow id the caller doesn't own (RLS), which becomes the
- * "Flow not found" state below.
+ * focus purely on editing. The API also 404s on a flow id the caller
+ * doesn't own (RLS), which becomes the "Flow not found" state below.
  */
 export default function FlowEditorPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const t = useTranslations("Flows.edit");
+  const allowed = useRequireRole("admin");
 
   const [flow, setFlow] = useState<FlowRow | null>(null);
   const [nodes, setNodes] = useState<FlowNodeRow[]>([]);
@@ -65,7 +64,7 @@ export default function FlowEditorPage() {
     };
   }, [params.id]);
 
-  if (loading) {
+  if (!allowed || loading) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

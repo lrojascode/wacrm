@@ -50,9 +50,14 @@ export const DEFAULT_SECTION: SettingsSection = 'overview';
  * blocked in the page render, not just the menu — see
  * `settings/page.tsx`) for anyone below `owner`. These mirror
  * `canEditOwnerSettings` in `@/lib/auth/roles` — five backed by
- * migration 047's owner-only RLS/grants, plus Appearance, which is
- * hidden here only because it's a personal per-device preference with
- * nothing in the database to restrict (see appearance-panel.tsx).
+ * migration 047's owner-only RLS/grants.
+ *
+ * Appearance is NOT in that set even though only the owner can edit
+ * it (migration 051 makes it account-wide) — every member still needs
+ * to reach the page to see the read-only view of the account's
+ * current pick (appearance-panel.tsx handles the edit-vs-view split
+ * itself via `isOwner`). Setting `ownerOnly` here would 404 that view
+ * entirely for admin/agent/viewer.
  */
 export interface SectionMeta {
   id: SettingsSection;
@@ -66,7 +71,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   overview: { id: 'overview', label: 'Overview', icon: LayoutGrid, group: 'top' },
   profile: { id: 'profile', label: 'Your profile', icon: User, group: 'account' },
   security: { id: 'security', label: 'Login & security', icon: Shield, group: 'account' },
-  appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account', ownerOnly: true },
+  appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },
   brand: { id: 'brand', label: 'Brand', icon: Sparkles, group: 'workspace', ownerOnly: true },
   whatsapp: { id: 'whatsapp', label: 'WhatsApp', icon: PlugZap, group: 'workspace', ownerOnly: true },
   templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },

@@ -24,12 +24,11 @@ export async function POST(
 ) {
   const { id } = await context.params
 
-  // Changing status (activate / draft / archive) is a write — the RLS
-  // flows_update policy requires `agent`, but the service-role client
-  // below bypasses RLS, so enforce the role here (a viewer passes the
-  // membership-only ownership check).
+  // Changing status (activate / draft / archive) is a write, admin+
+  // (see POST /api/flows) — the service-role client below bypasses
+  // RLS entirely, so enforce the role here.
   try {
-    await requireRole('agent')
+    await requireRole('admin')
   } catch (err) {
     return toErrorResponse(err)
   }

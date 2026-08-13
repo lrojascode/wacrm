@@ -20,6 +20,7 @@ import {
 
 import { useTranslations } from "next-intl";
 import { useCan } from "@/hooks/use-can";
+import { useRequireRole } from "@/hooks/use-require-role";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
 import {
@@ -37,9 +38,10 @@ import { cn } from "@/lib/utils";
 /**
  * Flows list page.
  *
- * Open to every authenticated user. Flows is in soft-GA — the "Beta"
- * chip in the header is the only remaining signal that the surface
- * is new. The previous per-account beta gate was removed in PR #134.
+ * Admin+ only — `useRequireRole` bounces agent/viewer to /dashboard.
+ * Flows is otherwise in soft-GA — the "Beta" chip in the header is the
+ * only remaining signal that the surface is new. The previous
+ * per-account beta gate was removed in PR #134.
  */
 
 interface FlowRow {
@@ -84,6 +86,7 @@ const TEMPLATE_ICONS = {
 
 export default function FlowsPage() {
   const router = useRouter();
+  const allowed = useRequireRole("admin");
   const canCreate = useCan("send-messages");
   const t = useTranslations("Flows.list");
   const [flows, setFlows] = useState<FlowRow[]>([]);
@@ -191,7 +194,7 @@ export default function FlowsPage() {
     }
   }
 
-  if (loading) {
+  if (!allowed || loading) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

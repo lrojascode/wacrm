@@ -28,7 +28,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import type { AccountRole } from "@/lib/auth/roles";
+import { hasMinRole, type AccountRole } from "@/lib/auth/roles";
 
 // Per-role chip metadata used in the sidebar's account strip + the
 // Members tab roster. Keeping this near both consumers in a single
@@ -89,6 +89,13 @@ interface NavItem {
    * Purely informational — doesn't affect routing or access.
    */
   beta?: boolean;
+  /**
+   * Minimum role to see this row. Omitted = every role. Flows and AI
+   * Agents are configuration/automation-building surfaces reserved for
+   * admin+ — the underlying pages redirect agent/viewer away too (see
+   * useRequireRole), this just keeps the link from appearing at all.
+   */
+  minRole?: AccountRole;
 }
 
 const navItems: NavItem[] = [
@@ -100,8 +107,8 @@ const navItems: NavItem[] = [
   { href: "/campaigns", labelKey: "campaigns", icon: Megaphone },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   { href: "/automations", labelKey: "automations", icon: Zap },
-  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true },
-  { href: "/agents", labelKey: "aiAgents", icon: Bot },
+  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true, minRole: "admin" },
+  { href: "/agents", labelKey: "aiAgents", icon: Bot, minRole: "admin" },
 ];
 
 const bottomNavItems = [
@@ -120,6 +127,15 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
   const { profile, profileLoading, account, accountRole, signOut } = useAuth();
+
+  // Fail closed: while the role is still loading, gated items stay
+  // hidden rather than flashing in and then disappearing once the
+  // real (insufficient) role resolves.
+  const visibleNavItems = navItems.filter((item) => {
+    if (!item.minRole) return true;
+    if (profileLoading || !accountRole) return false;
+    return hasMinRole(accountRole, item.minRole);
+  });
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   // The account's own branding, falling back to the product name when
@@ -260,7 +276,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {/* Main navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));

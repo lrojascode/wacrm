@@ -20,6 +20,7 @@ import {
   isAccountRole,
   type AccountRole,
 } from "@/lib/auth/roles";
+import { DEFAULT_MODE, DEFAULT_THEME, isMode, isThemeId, type Mode, type ThemeId } from "@/lib/themes";
 
 interface Profile {
   id: string;
@@ -52,6 +53,16 @@ interface AccountSummary {
   brand_display_mode?: string | null;
   /** Brand logo size ('sm' | 'md' | 'lg') (migration 048). */
   brand_logo_size?: string | null;
+  /**
+   * Account-wide appearance (migration 051). The owner's choice —
+   * every member's `<AccountThemeSync>` applies these to `useTheme()`,
+   * so this is the source of truth rather than a per-device pick.
+   * Optional/nullable only for the schema-cache-lag window right
+   * after deploying (see the `loadAccount` retry below); falls back
+   * to the theme-catalog defaults when absent.
+   */
+  theme?: ThemeId | null;
+  mode?: Mode | null;
 }
 
 interface AuthContextValue {
@@ -184,10 +195,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               .maybeSingle();
 
           // default_currency added in migration 021, brand_name /
-          // logo_url in 043, display_mode / logo_size in 048;
-          // narrowed below for older schemas.
+          // logo_url in 043, display_mode / logo_size in 048,
+          // theme / mode in 051; narrowed below for older schemas.
           let { data: account, error: accountErr } = await loadAccount(
-            "id, name, default_currency, brand_name, logo_url, brand_display_mode, brand_logo_size",
+            "id, name, default_currency, brand_name, logo_url, brand_display_mode, brand_logo_size, theme, mode",
           );
 
           if (accountErr) {
@@ -225,6 +236,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               default_currency: row.default_currency ?? DEFAULT_CURRENCY,
               brand_name: row.brand_name ?? null,
               logo_url: row.logo_url ?? null,
+              theme: isThemeId(row.theme) ? row.theme : DEFAULT_THEME,
+              mode: isMode(row.mode) ? row.mode : DEFAULT_MODE,
             };
           }
         }

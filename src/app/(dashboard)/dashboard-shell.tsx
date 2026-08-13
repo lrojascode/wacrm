@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
+import { AccountThemeSync } from "@/components/layout/account-theme-sync";
 import { CallProvider } from "@/components/calls/call-provider";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
@@ -46,6 +47,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
         {/* Reports this tab's online/away presence once we know a user is
             signed in. Headless — renders nothing. */}
         <PresenceHeartbeat />
+        {/* Applies the account's stored appearance once it loads.
+            Headless — renders nothing. */}
+        <AccountThemeSync />
         <Sidebar open={sidebarOpen} onClose={closeSidebar} />
         <div className="flex flex-1 flex-col overflow-hidden">
           <Header onOpenSidebar={() => setSidebarOpen(true)} />
