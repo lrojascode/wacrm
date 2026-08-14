@@ -10,12 +10,12 @@ migración 044 ya aplicada — comprobar con
 En [developers.facebook.com](https://developers.facebook.com), el cliente (o
 quien administre su Business Manager) crea una app tipo *Business* y agrega
 el producto WhatsApp, igual que describen los pasos 1 y 2 del panel lateral
-de Ajustes → WhatsApp en wacrm. De ahí sale su propio **App ID** y **App
+de Ajustes → WhatsApp en CRM. De ahí sale su propio **App ID** y **App
 Secret** (Configuración de la app → Básica).
 
 ## 2. Guardar primero el número de WhatsApp
 
-En wacrm, **antes** de tocar nada de la app de Meta: Ajustes → WhatsApp →
+En CRM, **antes** de tocar nada de la app de Meta: Ajustes → WhatsApp →
 Credenciales de la API, y guardar `Phone Number ID`, `WABA ID` y el
 `Access Token` como con cualquier número. Esto crea la fila de
 `whatsapp_config` de la cuenta — sin ella no existe todavía una URL de
@@ -42,7 +42,7 @@ del webhook` que quedó guardado en el paso 2, y suscribirse al campo
 ## 5. Probar
 
 Escribir al número desde un WhatsApp real y confirmar que el mensaje entra
-en wacrm. Si no entra, revisar en el dashboard de la app del cliente en
+en CRM. Si no entra, revisar en el dashboard de la app del cliente en
 Meta que la entrega del webhook no esté marcando error — un secreto mal
 copiado da 401 en `/api/whatsapp/webhook/<token>`, visible en los logs del
 servidor como `[webhook/token] rejected request with invalid signature`.

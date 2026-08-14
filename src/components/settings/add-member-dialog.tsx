@@ -124,7 +124,7 @@ export function AddMemberDialog({ open, onOpenChange, onCreated }: AddMemberDial
         email: email.trim(),
         password,
         role,
-        accountName: account?.name ?? 'our wacrm account',
+        accountName: account?.name ?? 'our CRM account',
       });
       onCreated();
     } catch (err) {

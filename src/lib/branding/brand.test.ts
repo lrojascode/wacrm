@@ -146,8 +146,8 @@ describe("parseBrandAssetPath", () => {
 describe("buildBrandMetadata", () => {
   // Pins the fix for a real Next behaviour: `title.default` is resolved
   // THROUGH the parent template, so with the root layout's
-  // `template: "%s — wacrm"` a branded account would show
-  // "Acme — wacrm" in the tab. Only `absolute` bypasses it.
+  // `template: "%s — CRM"` a branded account would show
+  // "Acme — CRM" in the tab. Only `absolute` bypasses it.
   it("uses title.absolute, never title.default", () => {
     const meta = buildBrandMetadata(resolveBrand({ brand_name: "Acme" }));
     expect(meta.title.absolute).toBe("Acme");

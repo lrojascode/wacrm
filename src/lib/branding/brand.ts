@@ -6,7 +6,7 @@
  * completely different places — a client component and a server
  * `generateMetadata` — so the fallback rule has to live in exactly one
  * place or the two surfaces drift apart and a customer sees their logo
- * in the app while the tab still says "wacrm".
+ * in the app while the tab still says "CRM".
  *
  * Everything here is pure: no Supabase import, no `window`. That is
  * what lets both a React client component and a server layout use it.
@@ -38,7 +38,7 @@ export const LOGO_ACCEPT = LOGO_MIME.join(",");
  * Matches the root layout's title so an unbranded account is
  * indistinguishable from how the app behaved before branding existed.
  */
-export const DEFAULT_BRAND_TITLE = "wacrm";
+export const DEFAULT_BRAND_TITLE = "CRM";
 
 export type BrandDisplayMode = "logo" | "text" | "both";
 export type BrandLogoSize = "sm" | "md" | "lg";
@@ -167,8 +167,8 @@ export function parseBrandAssetPath(
  * Next resolves `default` through the parent segment's template
  * (`resolveTitleTemplate(stashedTemplate, title.default)` in
  * next/dist/lib/metadata/resolvers/resolve-title.js), so with the root
- * layout's `template: "%s — wacrm"` a branded account would read
- * "Acme — wacrm" in the tab. `absolute` bypasses the parent template.
+ * layout's `template: "%s — CRM"` a branded account would read
+ * "Acme — CRM" in the tab. `absolute` bypasses the parent template.
  * There is a test pinning this.
  */
 export function buildBrandMetadata(brand: Brand): {

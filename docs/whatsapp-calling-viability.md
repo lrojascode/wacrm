@@ -15,7 +15,7 @@ Meta's Cloud API Calling uses **Graph API Webhooks + WebRTC** by default:
 - **Media Session**: Browser standard `RTCPeerConnection` establishes a peer-to-peer WebRTC session (ICE / DTLS-SRTP with OPUS codec) against Meta's Cloud Media Servers.
 
 ### Pre-existing In-App Infrastructure
-wacrm already possesses the core architectural building blocks required:
+CRM already possesses the core architectural building blocks required:
 1. **Server Webhook Receiver**: Created & secured at [`src/app/api/whatsapp/webhook/`](file:///Users/luisr/Proyectos/wacrm/src/app/api/whatsapp/webhook/) to capture Meta `calls` webhook payloads.
 2. **Realtime Event Relay**: **Supabase Realtime** channels are already integrated across the inbox to push incoming call offers and SDP signals instantly to the browser client.
 
@@ -36,7 +36,7 @@ wacrm already possesses the core architectural building blocks required:
 ## 3. Revised Recommendation & Next Steps
 
 1. **Do NOT build outbound calling**: Business-initiated outbound calling cannot be relied upon due to the 1 call/day & 2 calls/week limit per contact.
-2. **Build Inbound Call Reception (Optional Future Milestone)**: Receiving incoming calls initiated by customers is fully viable using existing wacrm Webhook + Supabase Realtime infrastructure without any paid third-party voice providers.
+2. **Build Inbound Call Reception (Optional Future Milestone)**: Receiving incoming calls initiated by customers is fully viable using existing CRM Webhook + Supabase Realtime infrastructure without any paid third-party voice providers.
 
 ---
 

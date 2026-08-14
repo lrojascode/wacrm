@@ -1541,7 +1541,7 @@
       "labelTooLong": "La etiqueta debe tener {max} caracteres o menos",
       "copied": "Enlace de invitación copiado",
       "clipboardBlocked": "Portapapeles bloqueado — copia el enlace manualmente",
-      "whatsappMessage": "Únete a {accountName} en wacrm con este enlace (válido por {expiresInDays} días): {url}"
+      "whatsappMessage": "Únete a {accountName} en CRM con este enlace (válido por {expiresInDays} días): {url}"
     },
     "addMember": {
       "dialogTitle": "Agregar un compañero directamente",
@@ -1573,7 +1573,7 @@
       "saveNowHint": "Esta es la única vez que se muestra la contraseña. Si se pierde, quitá al miembro y agregalo de nuevo.",
       "sendViaWhatsApp": "Enviar por WhatsApp",
       "done": "Listo",
-      "whatsappMessage": "Te agregaron a {accountName} en wacrm. Email: {email} — Contraseña: {password}"
+      "whatsappMessage": "Te agregaron a {accountName} en CRM. Email: {email} — Contraseña: {password}"
     },
     "tagsAndFields": {
       "title": "Campos y etiquetas",
@@ -1684,8 +1684,8 @@
       "saveResubmit": "Guardar y reenviar",
       "submitApproval": "Enviar para aprobación",
       "deleteDialogTitle": "¿Eliminar plantilla?",
-      "deleteMetaDesc": "\"{name}\" se eliminará de Meta y de wacrm. Las difusiones activas que usen esta plantilla empezarán a fallar en su próximo envío. Esto no se puede deshacer.",
-      "deleteLocalDesc": "\"{name}\" se eliminará de wacrm. Nunca se envió a Meta, así que no se necesita limpieza remota.",
+      "deleteMetaDesc": "\"{name}\" se eliminará de Meta y de CRM. Las difusiones activas que usen esta plantilla empezarán a fallar en su próximo envío. Esto no se puede deshacer.",
+      "deleteLocalDesc": "\"{name}\" se eliminará de CRM. Nunca se envió a Meta, así que no se necesita limpieza remota.",
       "deleting": "Eliminando…",
       "delete": "Eliminar",
       "toastLoadFailed": "No se pudieron cargar las plantillas",
@@ -1726,7 +1726,7 @@
       "notConnected": "No conectado",
       "connectedDesc": "Tu token de acceso te autentica con Meta. Consulta el estado de registro abajo para saber si los webhooks están realmente conectados.",
       "notConnectedDesc": "Configura tus credenciales de la API de Meta abajo para conectar tu cuenta de WhatsApp Business.",
-      "registered": "Registrado — Meta entregará eventos a wacrm",
+      "registered": "Registrado — Meta entregará eventos a CRM",
       "notRegistered": "No registrado — Meta no entregará eventos",
       "verifyWithMeta": "Verificar con Meta",
       "subscribedSince": "Suscrito desde {date}. Haz clic en Verificar con Meta si dejan de llegar eventos.",
@@ -1750,7 +1750,7 @@
       "twoStepPin": "PIN de verificación en dos pasos",
       "optional": "(opcional)",
       "pinPlaceholder": "PIN de 6 dígitos del Administrador de WhatsApp de Meta",
-      "pinHint": "Necesario solo para conectar los mensajes entrantes de un número de producción. Configúralo en Meta Business Manager → Cuentas de WhatsApp → Números de teléfono → Verificación en dos pasos, luego pégalo aquí para que wacrm pueda suscribir el número — de lo contrario, Meta enruta los eventos entrantes a la app que lo reclamó por última vez (el síntoma que afecta a los segundos números bajo una WABA compartida). Los números de prueba de Meta no tienen PIN y ya están registrados — déjalo en blanco para ellos. Dejarlo en blanco también mantiene intacto un registro existente.",
+      "pinHint": "Necesario solo para conectar los mensajes entrantes de un número de producción. Configúralo en Meta Business Manager → Cuentas de WhatsApp → Números de teléfono → Verificación en dos pasos, luego pégalo aquí para que CRM pueda suscribir el número — de lo contrario, Meta enruta los eventos entrantes a la app que lo reclamó por última vez (el síntoma que afecta a los segundos números bajo una WABA compartida). Los números de prueba de Meta no tienen PIN y ya están registrados — déjalo en blanco para ellos. Dejarlo en blanco también mantiene intacto un registro existente.",
       "webhookTitle": "Configuración del webhook",
       "webhookDesc": "Usa esta URL como callback de tu webhook en el Panel de Apps de Meta.",
       "webhookUrl": "URL de callback del webhook",
@@ -2059,7 +2059,7 @@
     },
     "aiConfig": {
       "title": "Configuración del agente",
-      "description": "Usa tu propia clave de OpenAI o Anthropic. wacrm llama al proveedor directamente con tu clave — sin tarifas de IA por usuario, y tus datos siguen siendo tuyos. Esto impulsa las respuestas redactadas por IA en la bandeja de entrada, el bot de respuesta automática y el Playground.",
+      "description": "Usa tu propia clave de OpenAI o Anthropic. CRM llama al proveedor directamente con tu clave — sin tarifas de IA por usuario, y tus datos siguen siendo tuyos. Esto impulsa las respuestas redactadas por IA en la bandeja de entrada, el bot de respuesta automática y el Playground.",
       "adminOnlyConfig": "Solo los administradores y propietarios pueden cambiar la configuración de la IA.",
       "loadFailed": "No se pudo cargar la configuración de la IA",
       "providerAndKey": "Proveedor y clave",

@@ -130,7 +130,7 @@ export function startTitleFlash(flashText: string): void {
   if (typeof document === 'undefined') return
   if (titleFlashInterval !== null) return
 
-  originalDocumentTitle = document.title || 'wacrm'
+  originalDocumentTitle = document.title || 'CRM'
   let step = 0
 
   titleFlashInterval = window.setInterval(() => {
