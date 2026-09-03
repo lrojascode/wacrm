@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — owner-only settings
+-- CRM — owner-only settings
 -- Migration 047.
 --
 -- GENERATED FILE — do not edit. Regenerate with:

@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — calls
+-- CRM — calls
 -- Migration 050.
 --
 -- GENERATED FILE — do not edit. Regenerate with:

@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — contact-tasks
+-- CRM — contact-tasks
 -- Migration 049.
 --
 -- GENERATED FILE — do not edit. Regenerate with:

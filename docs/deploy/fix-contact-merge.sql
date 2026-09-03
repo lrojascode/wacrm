@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — fix del merge de contactos (046)
+-- CRM — fix del merge de contactos (046)
 -- Migration 046.
 --
 -- GENERATED FILE — do not edit. Regenerate with:

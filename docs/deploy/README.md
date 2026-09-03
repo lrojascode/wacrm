@@ -16,7 +16,7 @@ coincidir con lo que corre en local.
 
 ### `full-install.sql` — instalación nueva
 
-Contiene las 50 migraciones (001 a 050) en orden, en un solo archivo. Es lo
+Contiene las 51 migraciones (001 a 051) en orden, en un solo archivo. Es lo
 que hay que correr cuando se levanta el CRM en una cuenta de Supabase nueva:
 otro cliente, otro entorno, una migración de proveedor.
 
@@ -33,7 +33,8 @@ Después, `check-applied.sql` debe reportar todas las filas como `APPLIED`.
 ### Bundles por release — base existente
 
 `owner-only-settings.sql`, `brand-display.sql`, `contact-tasks.sql`,
-`calls.sql`, `ads-attribution.sql`, etc. Cada uno cubre una entrega concreta.
+`calls.sql`, `account-appearance.sql`, `ads-attribution.sql`, etc. Cada uno
+cubre una entrega concreta.
 
 Se mantienen uno por release a propósito: al pegarlos a mano, *"¿cuál me
 falta correr?"* es exactamente la pregunta que un archivo fusionado vuelve
@@ -41,7 +42,7 @@ imposible de responder. `full-install.sql` no los reemplaza — resuelve un
 problema distinto (empezar de cero, donde no hay historial que consultar).
 
 **No corras `full-install.sql` sobre una base en producción** para "ponerla al
-día". Es idempotente y no destruye datos, pero reejecuta 50 migraciones
+día". Es idempotente y no destruye datos, pero reejecuta 51 migraciones
 enteras —incluidos rehacer políticas y restricciones— cuando lo que
 necesitas son las dos que faltan. Usa `check-applied.sql` para saber cuáles
 son y corre solo esos bundles.

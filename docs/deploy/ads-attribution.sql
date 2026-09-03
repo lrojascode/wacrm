@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — ads attribution, ROI and salesperson assignment
+-- CRM — ads attribution, ROI and salesperson assignment
 -- Migrations 037 through 042, in order.
 --
 -- GENERATED FILE — do not edit. Regenerate with:

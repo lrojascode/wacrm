@@ -1881,6 +1881,7 @@
       "descriptionMember": "The mode and accent colour used across the app. Your account owner controls this for everyone.",
       "readOnlyNote": "Only the account owner can change the appearance for the whole team.",
       "saveError": "Couldn't save this for your team. Try again?",
+      "saveErrorMigration": "This database is missing the appearance columns. Apply docs/deploy/account-appearance.sql (migration 051) in the Supabase SQL editor, then try again.",
       "mode": "Mode",
       "useMode": "Use {mode} mode",
       "active": "Active",

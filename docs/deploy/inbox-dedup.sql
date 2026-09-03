@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — inbox de-duplication (contacts + conversations)
+-- CRM — inbox de-duplication (contacts + conversations)
 -- Migrations 022 through 036, in order.
 --
 -- GENERATED FILE — do not edit. Regenerate with:

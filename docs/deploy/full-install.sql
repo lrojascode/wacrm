@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — full install (fresh deployment, all migrations)
+-- CRM — full install (fresh deployment, all migrations)
 -- Migrations 001 through 051, in order.
 --
 -- GENERATED FILE — do not edit. Regenerate with:

@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — a per-account Meta app (App ID / App Secret / dedicated webhook URL)
+-- CRM — a per-account Meta app (App ID / App Secret / dedicated webhook URL)
 -- Migration 044.
 --
 -- GENERATED FILE — do not edit. Regenerate with:

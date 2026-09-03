@@ -65,6 +65,28 @@ export async function PUT(request: Request) {
 
     if (error) {
       console.error('[PUT /api/account/appearance] update error:', error)
+      // The database is running behind the deployed code: migration 051
+      // has not been applied to it yet. Say so instead of the generic
+      // failure — the generic message sent a real deployment straight
+      // into "the save button is broken" when the fix was one bundle
+      // away. 503: the request is valid, the backing store just is not
+      // ready for it yet.
+      //
+      // Two codes, because the failure surfaces at two different layers:
+      //   PGRST204 — PostgREST rejects the write against its own schema
+      //              cache before Postgres ever sees it. This is the one
+      //              that actually fires here (verified locally).
+      //   42703    — Postgres undefined_column, for the narrower window
+      //              where the cache is fresh but the column is not there.
+      if (error.code === 'PGRST204' || error.code === '42703') {
+        return NextResponse.json(
+          {
+            error:
+              'This database is missing the appearance columns. Apply docs/deploy/account-appearance.sql (migration 051) in the Supabase SQL editor, then try again.',
+          },
+          { status: 503 },
+        )
+      }
       return NextResponse.json(
         { error: 'Failed to save appearance settings' },
         { status: 500 },

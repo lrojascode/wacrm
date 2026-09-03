@@ -1,9 +1,9 @@
 -- ============================================================
--- CRM — brand-display
--- Migration 048.
+-- CRM — account appearance (tema y modo por cuenta)
+-- Migration 051.
 --
 -- GENERATED FILE — do not edit. Regenerate with:
---   ./scripts/deploy/bundle-migrations.sh docs/deploy/brand-display.sql 048
+--   ./scripts/deploy/bundle-migrations.sh docs/deploy/account-appearance.sql 051
 --
 -- HOW TO APPLY
 --   1. Supabase Cloud -> SQL Editor -> New query.
@@ -30,49 +30,50 @@
 
 
 -- ############################################################
--- ##  048_brand_display.sql
+-- ##  051_account_appearance.sql
 -- ############################################################
 
 -- ============================================================
--- 048_brand_display.sql
+-- 051_account_appearance.sql
 --
--- Brand display mode and logo size options for white-label branding.
--- Allows accounts to configure whether to display logo, text, or both,
--- and select logo display size (sm, md, lg).
--- Also increases brand-assets storage bucket limit to 5 MB for larger logos.
+-- Account-wide appearance (accent theme + light/dark mode). Previously
+-- each user’s choice lived in their own browser’s localStorage only
+-- (see src/hooks/use-theme.tsx) — this adds a shared default on the
+-- account row so the owner’s pick becomes what every member sees.
 --
--- Idempotent - safe to re-run.
+-- Write access
+--   These columns are deliberately left OUT of the `GRANT UPDATE
+--   (name, default_currency) ON accounts TO authenticated` from
+--   migration 047 — no GRANT statement here means `authenticated`
+--   cannot write them at all, session or not. The only path is
+--   PUT /api/account/appearance, which is owner-gated
+--   (requireRole(’owner’)) and writes through the service-role client,
+--   the same shape as /api/account/brand for brand_name / logo_url.
+--
+-- Read access is unaffected: accounts_update is the only revoked verb,
+-- so accounts_select (`is_account_member(id)`) already lets every
+-- member read these two columns, which is what lets everyone’s
+-- session pick up the owner’s choice.
+--
+-- Idempotent — safe to re-run.
 -- ============================================================
 
--- ============================================================
--- 1. Add brand_display_mode and brand_logo_size columns
--- ============================================================
 ALTER TABLE accounts
-  ADD COLUMN IF NOT EXISTS brand_display_mode TEXT DEFAULT 'both';
+  ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'violet';
 
 ALTER TABLE accounts
-  DROP CONSTRAINT IF EXISTS accounts_brand_display_mode_check;
+  DROP CONSTRAINT IF EXISTS accounts_theme_check;
 ALTER TABLE accounts
-  ADD CONSTRAINT accounts_brand_display_mode_check
-  CHECK (brand_display_mode IN ('logo', 'text', 'both'));
+  ADD CONSTRAINT accounts_theme_check
+  CHECK (theme IN ('violet', 'emerald', 'cobalt', 'amber', 'rose'));
 
 ALTER TABLE accounts
-  ADD COLUMN IF NOT EXISTS brand_logo_size TEXT DEFAULT 'sm';
+  ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'dark';
 
 ALTER TABLE accounts
-  DROP CONSTRAINT IF EXISTS accounts_brand_logo_size_check;
+  DROP CONSTRAINT IF EXISTS accounts_mode_check;
 ALTER TABLE accounts
-  ADD CONSTRAINT accounts_brand_logo_size_check
-  CHECK (brand_logo_size IN ('sm', 'md', 'lg'));
+  ADD CONSTRAINT accounts_mode_check
+  CHECK (mode IN ('light', 'dark'));
 
--- ============================================================
--- 2. Update brand-assets storage bucket file size limit (5 MB)
--- ============================================================
-UPDATE storage.buckets
-SET file_size_limit = 5242880
-WHERE id = 'brand-assets';
-
--- ============================================================
--- 3. Reload schema cache for PostgREST
--- ============================================================
 NOTIFY pgrst, 'reload schema';

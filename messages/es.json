@@ -1881,6 +1881,7 @@
       "descriptionMember": "El modo y el color de acento que se usan en toda la app. El propietario de la cuenta controla esto para todos.",
       "readOnlyNote": "Solo el propietario de la cuenta puede cambiar la apariencia para todo el equipo.",
       "saveError": "No se pudo guardar para tu equipo. ¿Intentar de nuevo?",
+      "saveErrorMigration": "A esta base de datos le faltan las columnas de apariencia. Aplicá docs/deploy/account-appearance.sql (migración 051) en el editor SQL de Supabase y volvé a intentar.",
       "mode": "Modo",
       "useMode": "Usar modo {mode}",
       "active": "Activo",

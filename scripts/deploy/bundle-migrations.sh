@@ -50,7 +50,7 @@ fi
   # heredoc below, which stays quoted on purpose: its body contains
   # backticks, and an unquoted heredoc would run them as commands.
   echo "-- ============================================================"
-  echo "-- wacrm — $TITLE"
+  echo "-- CRM — $TITLE"
   echo "-- $RANGE"
   echo "--"
   echo "-- GENERATED FILE — do not edit. Regenerate with:"

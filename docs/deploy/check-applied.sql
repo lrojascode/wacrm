@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — which schema releases are already applied?
+-- CRM — which schema releases are already applied?
 --
 -- There is no migration runner in this setup: the bundles under
 -- docs/deploy/ are pasted into the Supabase SQL editor by hand, and
@@ -143,6 +143,21 @@ WITH checks AS (
       AND EXISTS (SELECT 1 FROM information_schema.columns
                   WHERE table_name = 'messages' AND column_name = 'call_outcome'),
     'docs/deploy/calls.sql'
+  UNION ALL
+  SELECT
+    -- 051 is the one the app reads on EVERY page load (the account
+    -- theme/mode the whole team shares). Missing it does not just
+    -- disable appearance: the account select asks for these columns,
+    -- fails, and the client falls back to a narrower column list — which
+    -- is how a missing 051 also blanked brand_name / logo_url in the
+    -- sidebar. The fallback is now progressive, but this row is still
+    -- the fastest way to see the real cause.
+    '051 account appearance',
+    EXISTS (SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'accounts' AND column_name = 'theme')
+      AND EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name = 'accounts' AND column_name = 'mode'),
+    'docs/deploy/account-appearance.sql'
 )
 SELECT
   release,

@@ -35,6 +35,14 @@ export function AppearancePanel() {
         body: JSON.stringify(update),
       });
       if (!res.ok) {
+        // 503 is the one failure with a real remedy: the database has
+        // not had migration 051 applied. Show it translated rather than
+        // echoing the server's English string onto a localised page —
+        // the generic "try again" hid the actual fix entirely.
+        if (res.status === 503) {
+          toast.error(t("saveErrorMigration"));
+          return;
+        }
         toast.error(t("saveError"));
         return;
       }

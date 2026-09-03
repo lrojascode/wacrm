@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — per-account branding (logo and name)
+-- CRM — per-account branding (logo and name)
 -- Migration 043.
 --
 -- GENERATED FILE — do not edit. Regenerate with:

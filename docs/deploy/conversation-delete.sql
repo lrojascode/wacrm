@@ -1,5 +1,5 @@
 -- ============================================================
--- wacrm — owner-only conversation delete
+-- CRM — owner-only conversation delete
 -- Migration 045.
 --
 -- GENERATED FILE — do not edit. Regenerate with:

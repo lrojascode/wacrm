@@ -20,7 +20,7 @@ import {
   isAccountRole,
   type AccountRole,
 } from "@/lib/auth/roles";
-import { DEFAULT_MODE, DEFAULT_THEME, isMode, isThemeId, type Mode, type ThemeId } from "@/lib/themes";
+import { isMode, isThemeId, type Mode, type ThemeId } from "@/lib/themes";
 
 interface Profile {
   id: string;
@@ -57,9 +57,11 @@ interface AccountSummary {
    * Account-wide appearance (migration 051). The owner's choice —
    * every member's `<AccountThemeSync>` applies these to `useTheme()`,
    * so this is the source of truth rather than a per-device pick.
-   * Optional/nullable only for the schema-cache-lag window right
-   * after deploying (see the `loadAccount` retry below); falls back
-   * to the theme-catalog defaults when absent.
+   *
+   * `null` means the database predates 051 (the columns are NOT NULL
+   * with a default once it is applied, so a real row is never null).
+   * Consumers must treat null as "leave the local choice alone" rather
+   * than substituting a default — see the mapping in `fetchProfile`.
    */
   theme?: ThemeId | null;
   mode?: Mode | null;
@@ -194,28 +196,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               .eq("id", data.account_id)
               .maybeSingle();
 
-          // default_currency added in migration 021, brand_name /
-          // logo_url in 043, display_mode / logo_size in 048,
-          // theme / mode in 051; narrowed below for older schemas.
-          let { data: account, error: accountErr } = await loadAccount(
-            "id, name, default_currency, brand_name, logo_url, brand_display_mode, brand_logo_size, theme, mode",
-          );
+          // Asking for a column PostgREST does not know about yet
+          // (42703) is not a broken account — it is a database running
+          // behind the deployed code, either the brief window while the
+          // schema cache reloads or a self-host that has not pasted the
+          // latest bundle from docs/deploy/ yet.
+          //
+          // Degrade ONE migration at a time. The previous version fell
+          // straight from the full list to the 021 columns, so a database
+          // missing only 051 also lost brand_name / logo_url — the
+          // sidebar silently dropped the account's logo and name and
+          // looked like the branding had been deleted. Stepping down a
+          // tier at a time keeps every column the database actually has.
+          //
+          // Newest first; each entry drops exactly one release's columns.
+          const COLUMN_TIERS = [
+            "id, name, default_currency, brand_name, logo_url, brand_display_mode, brand_logo_size, theme, mode", // 051
+            "id, name, default_currency, brand_name, logo_url, brand_display_mode, brand_logo_size", // 048
+            "id, name, default_currency, brand_name, logo_url", // 043
+            "id, name, default_currency", // 021
+          ];
 
-          if (accountErr) {
-            // Asking for a column PostgREST does not know about yet
-            // (42703) is not a broken account — it is the window
-            // between deploying this code and the schema cache
-            // reloading after migration 043. Retry with the columns
-            // every released schema has, so the blast radius is a
-            // missing logo rather than losing `account` entirely:
-            // without it the sidebar strip disappears AND
-            // defaultCurrency silently falls back to USD, which
-            // reformats every amount in the app (issue #294).
-            const retry = await loadAccount("id, name, default_currency");
-            if (!retry.error) {
-              account = retry.data;
+          let account: unknown = null;
+          let accountErr: { message: string; details?: string | null; hint?: string | null; code?: string } | null =
+            null;
+          for (const columns of COLUMN_TIERS) {
+            const attempt = await loadAccount(columns);
+            if (!attempt.error) {
+              account = attempt.data;
               accountErr = null;
+              break;
             }
+            accountErr = attempt.error;
           }
 
           if (accountErr) {
@@ -236,8 +248,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               default_currency: row.default_currency ?? DEFAULT_CURRENCY,
               brand_name: row.brand_name ?? null,
               logo_url: row.logo_url ?? null,
-              theme: isThemeId(row.theme) ? row.theme : DEFAULT_THEME,
-              mode: isMode(row.mode) ? row.mode : DEFAULT_MODE,
+              // Selected since 048 but never mapped, so `resolveBrand`
+              // always fell back to "both" / "sm" and an owner's display
+              // -mode and logo-size choices silently did nothing.
+              brand_display_mode: row.brand_display_mode ?? null,
+              brand_logo_size: row.brand_logo_size ?? null,
+              // `null`, NOT the catalog default: on a migrated database
+              // these columns are NOT NULL with a default, so null can
+              // only mean "this database predates 051". Defaulting here
+              // instead made AccountThemeSync force violet/dark on every
+              // load, overriding each member's own pick and making the
+              // owner's choice look like it never saved.
+              theme: isThemeId(row.theme) ? row.theme : null,
+              mode: isMode(row.mode) ? row.mode : null,
             };
           }
         }
