@@ -1,7 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   daysAgoStart,
-  DOW_SHORT_MON_FIRST,
   lastNDayKeys,
   localDayKey,
   mondayIndex,
@@ -251,10 +250,6 @@ export async function loadResponseTime(db: DB): Promise<ResponseTimeSummary> {
       samples: samples.length,
     }
   })
-
-  // Silence unused-label warnings — keep the arrays explicitly named
-  // for readability above.
-  void DOW_SHORT_MON_FIRST
 
   return {
     buckets,

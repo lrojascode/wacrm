@@ -6,7 +6,7 @@ export interface TriggerMeta {
   pillClass: string
 }
 
-export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
+const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
   new_message_received: {
     label: 'New Message',
     pillClass: 'border-blue-500/30 bg-blue-500/10 text-blue-300',

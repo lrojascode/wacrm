@@ -15,7 +15,7 @@ let originalDocumentTitle = ''
  * Ensures an AudioContext is instantiated and unlocked.
  * Listens once to 'pointerdown' on the document to resume suspended contexts.
  */
-export function getUnlockedAudioContext(): AudioContext | null {
+function getUnlockedAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null
 
   if (!sharedAudioCtx) {

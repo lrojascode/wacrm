@@ -1758,7 +1758,7 @@ interface ApiStep {
   branches?: { yes?: ApiStep[]; no?: ApiStep[] }
 }
 
-export function toApiSteps(steps: BuilderStep[]): ApiStep[] {
+function toApiSteps(steps: BuilderStep[]): ApiStep[] {
   return steps.map((s) => ({
     step_type: s.step_type,
     step_config: s.step_config,

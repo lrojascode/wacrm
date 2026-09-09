@@ -84,7 +84,7 @@ type CustomValueIndex = Map<string, Map<string, string>>;
  * built-in-field mappings resolve synchronously; custom fields read
  * from a pre-built index to avoid N+1 queries during the send loop.
  */
-export function resolveVariables(
+function resolveVariables(
   variables: Record<string, VariableMapping>,
   contact: Contact,
   customValues?: Map<string, string>,

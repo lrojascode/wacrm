@@ -299,7 +299,7 @@ export function slugify(s: string, fallback: string): string {
 // or a freshly-added node with no fields filled in).
 // ============================================================
 
-export function truncate(s: string, max = 80): string {
+function truncate(s: string, max = 80): string {
   const clean = s.replace(/\s+/g, ' ').trim();
   if (clean.length <= max) return clean;
   return clean.slice(0, max - 1) + '…';

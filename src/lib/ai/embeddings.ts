@@ -15,8 +15,7 @@ import { providerHttpError, toNetworkError } from './providers/shared'
 
 const OPENAI_EMBEDDINGS_URL = 'https://api.openai.com/v1/embeddings'
 
-export const EMBEDDING_MODEL = 'text-embedding-3-small'
-export const EMBEDDING_DIMENSIONS = 1536
+const EMBEDDING_MODEL = 'text-embedding-3-small'
 
 // OpenAI accepts an array input; keep batches modest so a big re-index
 // stays under request-size limits and partial failures are cheap.

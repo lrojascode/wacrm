@@ -63,7 +63,7 @@ export type ComposerMediaKind = "image" | "video" | "document" | "audio";
 export const CHAT_MEDIA_BUCKET = "chat-media";
 
 /** Meta caps media captions at 1024 chars. Enforced here and in the send route. */
-export const MEDIA_CAPTION_MAX = 1024;
+const MEDIA_CAPTION_MAX = 1024;
 
 /** Hard cap on a single voice recording so it can't blow the upload/
  *  transcode limits — auto-stops the recorder when reached. */

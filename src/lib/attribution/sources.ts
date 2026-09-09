@@ -38,7 +38,7 @@ export const AUTO_DETECTED_SOURCES: ReadonlySet<ContactSource> = new Set([
   'web',
 ]);
 
-export function isContactSource(value: unknown): value is ContactSource {
+function isContactSource(value: unknown): value is ContactSource {
   return (
     typeof value === 'string' &&
     (CONTACT_SOURCES as readonly string[]).includes(value)
@@ -53,18 +53,6 @@ export function isContactSource(value: unknown): value is ContactSource {
 export function toContactSource(value: unknown): ContactSource {
   return isContactSource(value) ? value : DEFAULT_SOURCE;
 }
-
-/** Badge tint per source. Kept in sync with the app's badge classes. */
-export const SOURCE_TONE: Record<ContactSource, string> = {
-  meta_ads: 'blue',
-  google_ads: 'amber',
-  organic: 'emerald',
-  web: 'violet',
-  referral: 'rose',
-  manual: 'slate',
-  other: 'slate',
-  unknown: 'slate',
-};
 
 /** Order for pickers: the ones a human picks first, unknown last. */
 export const SOURCE_PICKER_ORDER: readonly ContactSource[] = [

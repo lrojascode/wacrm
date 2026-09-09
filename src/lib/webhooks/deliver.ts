@@ -28,7 +28,7 @@ import { isDeliverableUrl } from '@/lib/webhooks/ssrf';
 import type { WebhookEvent } from '@/lib/webhooks/events';
 
 /** Per-endpoint HTTP timeout. Kept short — this runs in `after()`. */
-export const DELIVERY_TIMEOUT_MS = 5000;
+const DELIVERY_TIMEOUT_MS = 5000;
 
 /** Auto-disable an endpoint after this many consecutive failures. */
 export const MAX_CONSECUTIVE_FAILURES = 15;
