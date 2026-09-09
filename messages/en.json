@@ -216,7 +216,9 @@
   },
   "Inbox": {
     "page": {
-      "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account."
+      "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account.",
+      "conversationUnavailable": "This conversation is no longer available. It may have been deleted, or you may no longer have access.",
+      "conversationDeleted": "This conversation has been deleted."
     },
     "conversationList": {
       "searchPlaceholder": "Search conversations...",

@@ -531,9 +531,20 @@ Un evento con sesión nula deja de aplicarse de inmediato: se confirma con `getU
 *Resultado medido:* 11/12 en verde en los dos proyectos (el salto es el control de volver, que por diseño solo existe bajo `lg`). typecheck 0, lint 0 errores y **41 warnings, uno menos que la línea base** (el import muerto de `toast` era preexistente), 96 archivos / 905 tests, build 98 rutas, E2E total 20/20. Verificado visualmente que el enlace antiguo aterriza en la URL limpia con lista e hilo correctos.
 *Nota sobre los tests:* el proyecto móvil obligó a que el helper distinga panel único de dos paneles. La decisión se ata a 1024 px —el mismo `lg` que usa el CSS— y no a si la lista está visible en ese instante: el elemento desaparece durante un refetch, y tomar eso por "panel único" mandaba al test a buscar un botón que en desktop no existe.
 
-**P0-BUG-05 — Resolución en servidor con estados distinguibles** *(Defecto D)*
-Carga de la conversación con el cliente RLS del usuario, devolviendo `ok` / `not_found` / `forbidden`.
-*Aceptación:* URL de conversación borrada → `/inbox` con mensaje "Esta conversación ya no existe"; URL de otra cuenta → `/inbox` con mensaje de acceso; **nunca** se renderiza contenido de otra cuenta; refrescar sobre una conversación válida la recupera con sus mensajes.
+**P0-BUG-05 — Resolución con estados distinguibles** — ✅ **COMPLETADA** (2026-09-09) *(Defecto D)*
+Nuevo `src/lib/inbox/resolve-conversation.ts` (+ test); `src/app/(dashboard)/inbox/[[...conversationId]]/page.tsx`; mensajes en `messages/{es,en,ko}.json`; casos en `e2e/inbox-navigation.spec.ts`.
+
+**Desviación del plan, por seguridad.** El plan pedía tres estados distinguibles: `ok`, `not_found` y `forbidden`. **Los dos últimos no son distinguibles, y es deliberado**: RLS devuelve cero filas para la conversación de otra cuenta exactamente igual que para una borrada. Separarlos exigiría una lectura con `service_role` que mire más allá de la frontera de inquilino, y convertiría la ruta en un oráculo — pegas un id y averiguas si es una conversación real de otra cuenta. Un ex-empleado con enlaces antiguos es justo quien saca partido de esa respuesta. Se devuelve `unavailable` para ambos, que además es lo que pedía el reporte original: *"si la conversación fue eliminada o el usuario perdió acceso, regresar a Inbox con un mensaje claro"* — **un** mensaje, cubriendo los dos casos.
+
+*Cuatro estados, no tres:* `ok`, `unavailable`, `error` y `unauthenticated`. Los dos últimos existen para no repetir el error que corrigió P0-BUG-03 — un fallo de consulta no es prueba de nada y no debe expulsar a nadie.
+
+*Interacción que detectó el propio E2E de P0-BUG-01:* sin sesión, RLS devuelve cero filas **sin error**, indistinguible de una conversación inaccesible. La primera versión tomaba una sesión moribunda por conversación borrada: mostraba un mensaje engañoso y, peor, redirigía a `/inbox` **antes** de la expulsión, así que el `?next=` acababa apuntando a la lista en vez del hilo que el usuario estaba leyendo — regresando el viaje de vuelta de P0-BUG-03. Resuelto confirmando la sesión antes de creerse el resultado vacío, la misma regla de "confirmar antes de actuar". Verificado: la URL final de la reproducción vuelve a ser `/login?next=%2Finbox%2F<id>`.
+
+*Un id mal formado* se atrapa antes de la consulta: PostgREST lo rechazaría con un error de cast, que se leería como fallo de transporte y dejaría al usuario esperando un hilo que nunca carga.
+
+*Aceptación:* URL de conversación borrada → `/inbox` con mensaje; URL de otra cuenta → `/inbox` con mensaje; **nunca** se renderiza contenido de otra cuenta; refrescar sobre una conversación válida la recupera con sus mensajes.
+*Resultado medido:* E2E **28/28** (4 saltados por diseño), incluidos el aislamiento entre cuentas y el cambio de cuenta sin residuos. typecheck 0, lint 0 errores y 41 warnings, 97 archivos / 912 tests, build 98 rutas.
+*Verificado que los tests detectan el bug:* contra la implementación anterior fallan 3 de los 4 casos nuevos. El cuarto —cambio de cuenta sin filtración— pasa en ambos, porque ese aislamiento ya lo garantizaba RLS: es guardia de regresión, no prueba del arreglo.
 
 **P0-BUG-06 — Persistir filtros, búsqueda y scroll**
 `src/components/inbox/conversation-list.tsx:99-104`, `src/components/inbox/message-thread.tsx`

@@ -8,6 +8,11 @@ import {
   CONVERSATION_SELECT,
   normalizeConversation,
 } from "@/lib/inbox/conversations";
+import {
+  looksLikeConversationId,
+  resolveConversation,
+} from "@/lib/inbox/resolve-conversation";
+import { toast } from "sonner";
 import type { Conversation, Message, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
@@ -80,6 +85,16 @@ function InboxPageInner() {
    * once on conversationId-change as usual.
    */
   const [resyncToken, setResyncToken] = useState(0);
+
+  /**
+   * Has the conversation list finished its first load?
+   *
+   * Needed so the resolver below does not judge a URL before there is
+   * anything to judge it against — on a cold load the list is empty for
+   * a moment, and treating that as "this conversation does not exist"
+   * would bounce every deep link straight back to /inbox.
+   */
+  const [conversationsLoaded, setConversationsLoaded] = useState(false);
 
   /**
    * Whether the desktop contact sidebar (tags / deals / notes) is shown.
@@ -305,13 +320,16 @@ function InboxPageInner() {
 
       if (routeConvId === conversationId) {
         setMessages([]);
+        // Someone else deleted the thread the user was reading. Say so
+        // rather than silently emptying the pane.
+        toast.error(t("conversationDeleted"));
         // `replace`, not `push`: the deleted thread must not stay in
         // history, or Back would walk the user straight back into a
         // conversation that no longer exists.
         router.replace("/inbox", { scroll: false });
       }
     },
-    [routeConvId, router]
+    [routeConvId, router, t]
   );
 
   // Handle realtime conversation events
@@ -415,6 +433,79 @@ function InboxPageInner() {
   }, [isConnected]);
 
   /**
+   * Resolve a conversation id that is not in the loaded list.
+   *
+   * The list is paginated and filtered, so a perfectly valid deep link
+   * often points at a conversation that simply is not in it. Fetch that
+   * one row and, if the user may see it, splice it in. If they may not,
+   * send them back to the list WITH an explanation — the old behaviour
+   * was an empty pane and no clue why.
+   *
+   * `resolvedIdRef` keeps this to one attempt per id, so a failed
+   * lookup does not retry on every re-render.
+   */
+  const resolvedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!routeConvId || !conversationsLoaded) return;
+    if (conversations.some((c) => c.id === routeConvId)) return;
+    if (resolvedIdRef.current === routeConvId) return;
+    resolvedIdRef.current = routeConvId;
+
+    // A hand-edited URL never reaches the database: PostgREST would
+    // reject a non-uuid with a cast error, which reads as a transport
+    // failure and would keep the user waiting on a thread that cannot
+    // load.
+    if (!looksLikeConversationId(routeConvId)) {
+      toast.error(t("conversationUnavailable"));
+      router.replace("/inbox", { scroll: false });
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const result = await resolveConversation(createClient(), routeConvId);
+      if (cancelled) return;
+
+      if (result.status === "ok") {
+        setConversations((prev) =>
+          prev.some((c) => c.id === result.conversation.id)
+            ? prev
+            : [result.conversation, ...prev],
+        );
+        return;
+      }
+
+      if (result.status === "unauthenticated") {
+        // The session is going. Leave the outcome to the auth layer:
+        // redirecting here would send the user to /inbox first, and the
+        // `?next=` written on the way to /login would then point at the
+        // list instead of the conversation they were reading.
+        resolvedIdRef.current = null;
+        return;
+      }
+
+      if (result.status === "error") {
+        // Do NOT redirect. The lookup failed, which says nothing about
+        // whether the conversation exists — throwing the user out here
+        // would repeat the mistake P0-BUG-03 fixed for sign-outs.
+        // Allow a retry by clearing the guard.
+        console.error("[inbox] conversation lookup failed:", result.message);
+        resolvedIdRef.current = null;
+        return;
+      }
+
+      // Deleted, or belonging to another account. RLS makes those
+      // indistinguishable on purpose — see resolve-conversation.ts.
+      toast.error(t("conversationUnavailable"));
+      router.replace("/inbox", { scroll: false });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [routeConvId, conversationsLoaded, conversations, router, t]);
+
+  /**
    * Refetch when the tab regains focus. Background tabs may have their
    * WS throttled by the browser even without a full disconnect, so a
    * visibilitychange → visible is a reliable signal that we may have
@@ -444,6 +535,7 @@ function InboxPageInner() {
 
   const handleConversationsLoaded = useCallback((loaded: Conversation[]) => {
     setConversations(loaded);
+    setConversationsLoaded(true);
     // No deep-link resolution here any more. The open conversation is
     // derived from the URL, so a list refresh — realtime, resync or
     // manual — cannot change the selection, and there is no ref to keep

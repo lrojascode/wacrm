@@ -216,7 +216,9 @@
   },
   "Inbox": {
     "page": {
-      "whatsappNotConnected": "WhatsApp® no está conectado. Ve a Configuración para conectar tu cuenta."
+      "whatsappNotConnected": "WhatsApp® no está conectado. Ve a Configuración para conectar tu cuenta.",
+      "conversationUnavailable": "Esta conversación ya no está disponible. Puede que se haya eliminado o que ya no tengas acceso.",
+      "conversationDeleted": "Esta conversación se ha eliminado."
     },
     "conversationList": {
       "searchPlaceholder": "Buscar conversaciones...",

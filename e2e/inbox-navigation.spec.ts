@@ -10,8 +10,11 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { loginAs } from "./support/auth";
-import { conversationsFor } from "./support/fixtures";
+import { loginAs, logout } from "./support/auth";
+import {
+  conversationsFor,
+  MISSING_CONVERSATION_ID,
+} from "./support/fixtures";
 
 const [first, second, third] = conversationsFor("acme");
 
@@ -176,5 +179,75 @@ test.describe("inbox · historial y rutas por conversación", () => {
     // Never the dashboard, even though that is where the user came from
     // — the control returns to the inbox, it does not pop history.
     expect(page.url()).not.toContain("/dashboard");
+  });
+});
+
+// ============================================================
+// P0-BUG-05 — a URL that cannot resolve must say so.
+//
+// Before this, an id the loaded list did not contain produced nothing
+// at all: no selection, no error, no redirect. The user opened their
+// link and got an empty pane with no explanation.
+// ============================================================
+
+test.describe("inbox · conversaciones que no se pueden abrir", () => {
+  test("una conversación inexistente devuelve a /inbox con un mensaje", async ({
+    page,
+  }) => {
+    await loginAs(page, "acmeOwner");
+    await page.goto(`/inbox/${MISSING_CONVERSATION_ID}`);
+
+    await expect(page).toHaveURL(/\/inbox$/, { timeout: 30_000 });
+    await expect(page.getByText(/ya no está disponible|no longer available/i)).toBeVisible();
+  });
+
+  // El requisito de aislamiento del reporte: "nunca recuperar una
+  // conversación perteneciente a otra cuenta".
+  test("la conversación de otra cuenta no se abre ni se filtra su contenido", async ({
+    page,
+  }) => {
+    const [globexConversation] = conversationsFor("globex");
+
+    await loginAs(page, "acmeOwner");
+    await page.goto(`/inbox/${globexConversation.id}`);
+
+    await expect(page).toHaveURL(/\/inbox$/, { timeout: 30_000 });
+    await expect(page.getByText(/ya no está disponible|no longer available/i)).toBeVisible();
+
+    // Lo que de verdad importa: nada del otro inquilino llega al DOM.
+    await expect(page.getByText(globexConversation.contactName)).toHaveCount(0);
+    await expect(page.getByText(globexConversation.firstMessage)).toHaveCount(0);
+  });
+
+  test("un id mal formado se trata igual, sin quedarse cargando", async ({ page }) => {
+    await loginAs(page, "acmeOwner");
+    await page.goto("/inbox/no-soy-un-uuid");
+
+    await expect(page).toHaveURL(/\/inbox$/, { timeout: 30_000 });
+    await expect(page.getByText(/ya no está disponible|no longer available/i)).toBeVisible();
+  });
+
+  // El cambio de cuenta en el mismo contexto de navegador: el estado de
+  // la cuenta anterior no debe sobrevivir.
+  test("al cambiar de cuenta no queda rastro de la anterior", async ({ page }) => {
+    const [acmeConversation] = conversationsFor("acme");
+    const [globexConversation] = conversationsFor("globex");
+
+    await loginAs(page, "acmeOwner");
+    await page.goto(`/inbox/${acmeConversation.id}`);
+    await expect(
+      page.getByTestId("message-thread").getByText(acmeConversation.firstMessage),
+    ).toBeVisible();
+
+    await logout(page);
+    await loginAs(page, "globexOwner");
+    await page.goto("/inbox");
+
+    await expect(
+      page.getByTestId("conversation-list").getByText(globexConversation.contactName),
+    ).toBeVisible({ timeout: 30_000 });
+    // Ni la conversación de Acme ni su contacto asoman por ningún lado.
+    await expect(page.getByText(acmeConversation.contactName)).toHaveCount(0);
+    await expect(page.getByText(acmeConversation.firstMessage)).toHaveCount(0);
   });
 });
