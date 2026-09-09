@@ -7,7 +7,7 @@ import { getBrand } from "@/lib/branding/server";
 // app, and brands the browser tab for the signed-in account.
 //
 // The robots block is belt-and-suspenders: robots.ts already disallows
-// these paths at the crawler level and middleware redirects
+// these paths at the crawler level and the proxy redirects
 // unauthenticated visitors — but it is SEO-critical if a URL ever
 // leaks via a link shared externally.
 //

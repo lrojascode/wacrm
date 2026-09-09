@@ -21,7 +21,7 @@ import { DEFAULT_BRAND_TITLE, resolveBrand, type Brand } from "./brand";
  * 2. No `auth.getUser()`. That is a network round trip to the auth
  *    server, and it is not the security boundary here — RLS is. With a
  *    missing or forged JWT the query below returns no rows and we fall
- *    back. The middleware (src/middleware.ts:26) has already refreshed
+ *    back. The proxy (src/proxy.ts:26) has already refreshed
  *    the session cookie before this runs.
  *
  * 3. No lookup through `profiles`. The `accounts_select` policy is

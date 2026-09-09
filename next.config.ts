@@ -150,11 +150,11 @@ const nextConfig: NextConfig = {
         // order (server/lib/router-utils/resolve-routes).
         //
         // An earlier version of the comment above claimed Next.js and
-        // the auth middleware already force `private` / `no-store` on
+        // the auth proxy already force `private` / `no-store` on
         // per-user responses. Neither does. Next only applies its own
         // cache-control when the header is not already set
         // (server/send-payload.js: "If cache control is already set on
-        // the response we don't override it"), and src/middleware.ts
+        // the response we don't override it"), and src/proxy.ts
         // never touches Cache-Control at all — so the rule above was
         // winning on every dashboard page.
         //
