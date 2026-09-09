@@ -514,9 +514,22 @@ Un evento con sesión nula deja de aplicarse de inmediato: se confirma con `getU
 *Verificado que los tests detectan el bug:* contra la implementación anterior fallan 2 de los 5 casos de `use-auth`.
 *Verificación global:* typecheck 0, lint 0 errores, 96 archivos / 901 tests, build 98 rutas, E2E 9/9.
 
-**P0-BUG-04 — Ruta por conversación e historial** *(Defecto C)*
-Nuevo `src/app/(dashboard)/inbox/[conversationId]/page.tsx`; `src/app/(dashboard)/inbox/page.tsx` pasa a lista. Selección con `router.push`. Redirección 308 de `/inbox?c=<id>` a `/inbox/<id>` para no romper enlaces existentes.
+**P0-BUG-04 — Ruta por conversación e historial** — ✅ **COMPLETADA** (2026-09-09) *(Defecto C)*
+`src/app/(dashboard)/inbox/page.tsx` → `src/app/(dashboard)/inbox/[[...conversationId]]/page.tsx` (con `git mv`); `src/proxy.ts`; enlaces en `notifications/page.tsx`, `lib/dashboard/queries.ts`, `calls/active-call-bar.tsx`; nuevo `e2e/inbox-navigation.spec.ts`.
+
+*Desviación deliberada del plan:* un **catch-all opcional** `[[...conversationId]]` en vez de un `[conversationId]` separado. La razón es la que hacía peligroso el plan original: dos rutas distintas son dos segmentos distintos, así que cambiar de conversación **remonta** el componente y se pierden la lista cargada, los filtros, la búsqueda y el scroll — justo el estado que P0-BUG-02 acaba de proteger. Con un solo segmento opcional, `/inbox` y `/inbox/<id>` resuelven al mismo sitio y la navegación solo re-renderiza.
+
+*Simplificación de fondo:* la conversación abierta **se deriva de la URL** en lugar de guardarse en estado. Antes había dos fuentes de verdad que había que sincronizar a mano, y por eso cada patch de realtime estaba escrito dos veces, una en `conversations` y otra en `activeConversation`. Al derivarla desaparecen esa duplicación, el `autoSelectedForDeepLinkRef` y toda la clase de bug "la lista se recargó y me saltó a otro hilo".
+
+*Selección con `push`, no `replace`* — el arreglo del defecto C. El cerrar/volver hace `push("/inbox")`, no `router.back()`: hacer `back()` aterrizaría en el dashboard justo cuando el usuario vino de ahí, que es la queja del reporte.
+
+*Compatibilidad:* redirección **308** de `/inbox?c=<id>` a `/inbox/<id>`, hecha en el proxy y no con `redirects()` de `next.config` — ese helper **añade al destino cualquier query que no consuma**, produciendo `/inbox/<id>?c=<id>`. Comprobado en E2E antes de moverlo. En el proxy además es testeable unitariamente.
+
+*Bug preexistente corregido de paso:* `active-call-bar.tsx:37` enlazaba a `/dashboard/inbox?conversationId=…`, que nunca funcionó por dos motivos independientes: `(dashboard)` es un grupo de rutas y no aparece en la URL, y el inbox jamás leyó un parámetro `conversationId`.
+
 *Aceptación:* abrir tres conversaciones y pulsar Atrás recorre las tres y luego llega a `/inbox` (**nunca** a `/dashboard`); Adelante rehace el camino; el botón cerrar/volver lleva a `/inbox`; funciona en desktop y móvil.
+*Resultado medido:* 11/12 en verde en los dos proyectos (el salto es el control de volver, que por diseño solo existe bajo `lg`). typecheck 0, lint 0 errores y **41 warnings, uno menos que la línea base** (el import muerto de `toast` era preexistente), 96 archivos / 905 tests, build 98 rutas, E2E total 20/20. Verificado visualmente que el enlace antiguo aterriza en la URL limpia con lista e hilo correctos.
+*Nota sobre los tests:* el proyecto móvil obligó a que el helper distinga panel único de dos paneles. La decisión se ata a 1024 px —el mismo `lg` que usa el CSS— y no a si la lista está visible en ese instante: el elemento desaparece durante un refetch, y tomar eso por "panel único" mandaba al test a buscar un botón que en desktop no existe.
 
 **P0-BUG-05 — Resolución en servidor con estados distinguibles** *(Defecto D)*
 Carga de la conversación con el cliente RLS del usuario, devolviendo `ok` / `not_found` / `forbidden`.

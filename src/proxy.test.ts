@@ -178,15 +178,63 @@ describe("proxy — ?next= al volver de /login", () => {
   it("al expulsar a un anónimo de una ruta protegida, guarda el destino", async () => {
     mockUser = null;
 
-    const res = await proxy(
-      new NextRequest("https://app.test/inbox?c=abc-123"),
-    );
+    const res = await proxy(new NextRequest("https://app.test/inbox/abc-123"));
 
     const location = new URL(res.headers.get("location")!);
     expect(location.pathname).toBe("/login");
     // El query original no debe quedar colgando en /login: antes una
     // petición a /inbox?c=<id> se convertía en /login?c=<id>.
     expect(location.searchParams.get("c")).toBeNull();
-    expect(location.searchParams.get("next")).toBe("/inbox?c=abc-123");
+    expect(location.searchParams.get("next")).toBe("/inbox/abc-123");
+  });
+
+  it("un anónimo con enlace antiguo se normaliza primero y luego va a /login", async () => {
+    mockUser = null;
+
+    // La normalización corre antes del control de auth, así que el
+    // anónimo da dos saltos: /inbox?c=<id> -> /inbox/<id> -> /login.
+    // Es deliberado: el `next` que acaba guardándose es la URL
+    // canónica, no la heredada.
+    const first = await proxy(new NextRequest("https://app.test/inbox?c=abc-123"));
+    expect(first.status).toBe(308);
+    expect(new URL(first.headers.get("location")!).pathname).toBe("/inbox/abc-123");
+
+    const second = await proxy(new NextRequest("https://app.test/inbox/abc-123"));
+    expect(
+      new URL(second.headers.get("location")!).searchParams.get("next"),
+    ).toBe("/inbox/abc-123");
+  });
+});
+
+describe("proxy — enlaces antiguos /inbox?c=<id>", () => {
+  it("redirige 308 a /inbox/<id> sin arrastrar el query", async () => {
+    mockUser = { id: "user-1" };
+
+    const res = await proxy(
+      new NextRequest("https://app.test/inbox?c=abc-123"),
+    );
+
+    expect(res.status).toBe(308);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.pathname).toBe("/inbox/abc-123");
+    // `redirects()` en next.config dejaba el parámetro consumido pegado
+    // al destino (/inbox/abc-123?c=abc-123). Por eso la regla vive aquí.
+    expect(location.search).toBe("");
+  });
+
+  it("no redirige cuando c está vacío", async () => {
+    mockUser = { id: "user-1" };
+
+    const res = await proxy(new NextRequest("https://app.test/inbox?c="));
+
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("deja pasar /inbox sin parámetros", async () => {
+    mockUser = { id: "user-1" };
+
+    const res = await proxy(new NextRequest("https://app.test/inbox"));
+
+    expect(res.headers.get("location")).toBeNull();
   });
 });

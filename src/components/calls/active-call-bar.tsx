@@ -34,7 +34,11 @@ export function ActiveCallBar({
 
   const handleContactClick = () => {
     if (session.conversationId) {
-      router.push(`/dashboard/inbox?conversationId=${session.conversationId}`);
+      // Was `/dashboard/inbox?conversationId=…`, which never worked:
+      // `(dashboard)` is a route group and does not appear in the URL,
+      // and the inbox never read a `conversationId` query param. Two
+      // separate reasons the same link went nowhere.
+      router.push(`/inbox/${session.conversationId}`);
     }
   };
 

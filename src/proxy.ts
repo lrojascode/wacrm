@@ -43,6 +43,28 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
+  // The inbox moved from `/inbox?c=<id>` to `/inbox/<id>` (P0-BUG-04),
+  // so the open conversation is a location rather than component state
+  // and the browser's Back button behaves. Old links are still out
+  // there — pasted into chats, bookmarked, sitting in an open tab's
+  // recent-conversations list — so they keep working.
+  //
+  // Done here rather than with `redirects()` in next.config because
+  // that helper appends any query param it did not consume to the
+  // destination, producing `/inbox/<id>?c=<id>`: the right page with a
+  // redundant parameter stuck in the address bar. Building the URL by
+  // hand drops it, and makes the rule unit-testable.
+  if (request.nextUrl.pathname === '/inbox') {
+    const legacyId = request.nextUrl.searchParams.get('c')
+    if (legacyId) {
+      const url = request.nextUrl.clone()
+      url.pathname = `/inbox/${encodeURIComponent(legacyId)}`
+      url.search = ''
+      // 308, not 307: the move is permanent and the method must survive.
+      return withRefreshedCookies(NextResponse.redirect(url, 308))
+    }
+  }
+
   // Auth pages - redirect to dashboard if already logged in.
   // Exception: when an invite token is in the query string we
   // send the already-signed-in user to /join/<token> instead so

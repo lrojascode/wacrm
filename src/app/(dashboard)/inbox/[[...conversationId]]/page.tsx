@@ -1,19 +1,18 @@
 "use client";
 
-import { Suspense, useState, useCallback, useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
   normalizeConversation,
 } from "@/lib/inbox/conversations";
-import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
+import type { Conversation, Message, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
-import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,32 +20,54 @@ import { cn } from "@/lib/utils";
 // across reloads and sessions (device-scoped, like the theme prefs).
 const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
 
-// `useSearchParams` (the `?c=<id>` deep link below) requires a Suspense
-// boundary or the production build bails to CSR and errors out. Thin
-// wrapper supplies it; the inner component holds all the inbox state.
+// One optional catch-all segment serves both `/inbox` and
+// `/inbox/<id>`. That matters more than it looks: because both URLs
+// resolve to the SAME route segment, moving between conversations
+// re-renders this component instead of remounting it, so the loaded
+// list, the filters, the search box and the scroll position all
+// survive the navigation. A separate `[conversationId]` route would
+// have reintroduced exactly the state loss P0-BUG-02 just fixed.
+//
+// No Suspense wrapper any more: that existed only because
+// `useSearchParams` suspends. `useParams` does not.
 export default function InboxPage() {
-  return (
-    <Suspense fallback={null}>
-      <InboxPageInner />
-    </Suspense>
-  );
+  return <InboxPageInner />;
 }
 
 function InboxPageInner() {
   const t = useTranslations("Inbox.page");
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const params = useParams<{ conversationId?: string[] }>();
   /**
-   * `?c=<id>` deep-link support. Used when landing here from the
-   * dashboard's recent-conversations list so the right thread opens
-   * automatically instead of showing the empty center panel.
+   * The open conversation, taken from the URL rather than held only in
+   * state. The URL is the source of truth: back/forward, a refresh and
+   * a pasted link all go through this one value.
+   *
+   * The segment is an optional catch-all, so `params.conversationId` is
+   * `undefined` on `/inbox` and `["<id>"]` on `/inbox/<id>`. Anything
+   * deeper is somebody hand-editing the URL; take the first segment and
+   * ignore the rest.
    */
-  const deepLinkConvId = searchParams.get("c");
+  const routeConvId = params?.conversationId?.[0] ?? null;
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversation, setActiveConversation] =
-    useState<Conversation | null>(null);
-  const [activeContact, setActiveContact] = useState<Contact | null>(null);
+
+  const activeConversation = routeConvId
+    ? (conversations.find((c) => c.id === routeConvId) ?? null)
+    : null;
+  const activeContact = activeConversation?.contact ?? null;
+
+  /**
+   * Derived, never stored.
+   *
+   * Holding the open conversation in state as well as in the URL meant
+   * two sources of truth that had to be kept in step by hand — which is
+   * why every realtime patch below had to be written twice, once into
+   * `conversations` and once into `activeConversation`. Deriving it
+   * removes that duplication and, more importantly, makes back/forward
+   * work for free: the browser changes the URL, and the selection
+   * follows.
+   */
   const [messages, setMessages] = useState<Message[]>([]);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
@@ -90,11 +111,6 @@ function InboxPageInner() {
     });
   }, []);
 
-  // Fire the deep-link auto-select exactly once per URL — subsequent
-  // list refreshes (realtime, manual refetch) must not snap the user
-  // back to the deep-linked conversation if they've already clicked
-  // elsewhere.
-  const autoSelectedForDeepLinkRef = useRef<string | null>(null);
 
   // Tracks conversations whose hydrate fetch is currently in flight. The
   // conv-INSERT and the first-message-INSERT events both call into
@@ -287,16 +303,15 @@ function InboxPageInner() {
       // arriving in between doesn't treat the row as still known.
       knownConvIdsRef.current.delete(conversationId);
 
-      if (activeConversation?.id === conversationId) {
-        setActiveConversation(null);
-        setActiveContact(null);
+      if (routeConvId === conversationId) {
         setMessages([]);
-        autoSelectedForDeepLinkRef.current = null;
-        // Drop ?c=<deleted id> so a refresh doesn't try to reopen it.
+        // `replace`, not `push`: the deleted thread must not stay in
+        // history, or Back would walk the user straight back into a
+        // conversation that no longer exists.
         router.replace("/inbox", { scroll: false });
       }
     },
-    [activeConversation?.id, router]
+    [routeConvId, router]
   );
 
   // Handle realtime conversation events
@@ -351,11 +366,6 @@ function InboxPageInner() {
         }
 
         // Update active conversation if it changed
-        if (activeConversation && conv.id === activeConversation.id) {
-          setActiveConversation((prev) =>
-            prev ? { ...prev, ...conv } : prev
-          );
-        }
       }
 
       if (event.eventType === "DELETE") {
@@ -432,61 +442,20 @@ function InboxPageInner() {
     setResyncToken((n) => n + 1);
   }, []);
 
-  const handleConversationsLoaded = useCallback(
-    (loaded: Conversation[]) => {
-      setConversations(loaded);
-      // Resolve a pending deep-link here rather than in an effect — this
-      // is an event handler, so the setState calls below are allowed by
-      // react-hooks/set-state-in-effect. Runs once per ?c=<id> URL value
-      // via the ref, so realtime refreshes of the list can't snap the
-      // user back to the deep-linked thread after they've navigated.
-      if (
-        deepLinkConvId &&
-        autoSelectedForDeepLinkRef.current !== deepLinkConvId &&
-        loaded.length > 0
-      ) {
-        autoSelectedForDeepLinkRef.current = deepLinkConvId;
-        // If the deep-linked conversation is already the active one
-        // (e.g. because the user clicked it in the list and we
-        // router.replace()'d the URL, which made the ConversationList
-        // refetch and land us back here), do NOT re-apply it. Doing so
-        // would setMessages([]) on a thread whose messages have
-        // already been loaded by MessageThread — and because
-        // conversationId didn't change, MessageThread wouldn't
-        // refetch. The thread would read "No messages yet" until a
-        // full page reload rehydrated state from scratch.
-        if (activeConversation?.id === deepLinkConvId) return;
-        const match = loaded.find((c) => c.id === deepLinkConvId);
-        if (match) {
-          setActiveConversation(match);
-          setActiveContact(match.contact ?? null);
-          setMessages([]);
-          // Mirror the optimistic unread reset that handleSelectConversation
-          // does — the user just deep-linked into this conv, treat that the
-          // same as a click. Leaves activeConversation.unread_count alone so
-          // the MessageThread reset effect still fires the server UPDATE.
-          if (match.unread_count > 0) {
-            setConversations((prev) =>
-              prev.map((c) =>
-                c.id === match.id ? { ...c, unread_count: 0 } : c,
-              ),
-            );
-          }
-        }
-      }
-    },
-    [deepLinkConvId, activeConversation?.id]
-  );
+  const handleConversationsLoaded = useCallback((loaded: Conversation[]) => {
+    setConversations(loaded);
+    // No deep-link resolution here any more. The open conversation is
+    // derived from the URL, so a list refresh — realtime, resync or
+    // manual — cannot change the selection, and there is no ref to keep
+    // in step. That whole class of "the list reloaded and snapped me
+    // back to another thread" bug is gone by construction.
+  }, []);
 
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
-      // Re-clicking the already-active conversation would clear the
-      // messages array, but the fetch effect in MessageThread only re-runs
-      // when conversationId changes — so messages would stay empty until
-      // the user navigated away and back. Bail out early instead.
-      if (activeConversation?.id === conv.id) return;
-      setActiveConversation(conv);
-      setActiveContact(conv.contact ?? null);
+      // Re-clicking the open conversation would push a duplicate history
+      // entry, so Back would appear to do nothing once per extra click.
+      if (routeConvId === conv.id) return;
       setMessages([]);
       // Optimistically clear the unread badge for this conv. The
       // server-side reset is fired by the unread-reset effect inside
@@ -504,33 +473,25 @@ function InboxPageInner() {
             : c,
         ),
       );
-      // Record the selection on the deep-link ref BEFORE we change the
-      // URL. The router.replace below flips `deepLinkConvId`, which can
-      // in turn cause ConversationList to refetch and eventually call
-      // handleConversationsLoaded again. Without this line, the ref
-      // still points at the previous value, the auto-select block
-      // sees `ref !== deepLinkConvId`, fires a second time, and
-      // clobbers the messages MessageThread just fetched.
-      autoSelectedForDeepLinkRef.current = conv.id;
-      // Reflect the selection in the URL so a refresh lands the user
-      // back in the same thread, and so copy-paste links work. Use
-      // replace() to avoid polluting browser history with every click.
-      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+      // `push`, not `replace` — this is the fix for defect C. Every
+      // selection used to overwrite the same history entry, so after
+      // opening a few conversations the stack still held only whatever
+      // preceded /inbox. Pressing Back therefore left the inbox
+      // entirely and landed on the dashboard, which is the third
+      // symptom in the bug report and happens deterministically, with
+      // no auth involved at all.
+      router.push(`/inbox/${conv.id}`, { scroll: false });
     },
-    [activeConversation?.id, router]
+    [routeConvId, router]
   );
 
-  // Mobile "back" — deselect the conversation so the list pane comes
-  // back. Also clears the ?c= param so a refresh lands on the list
-  // instead of re-opening the thread the user just backed out of.
+  // The thread's close / back control. Goes to the inbox list, never
+  // to whatever happens to be behind this page in history — using
+  // `router.back()` here would land on the dashboard whenever the user
+  // arrived from there, which is precisely the reported complaint.
   const handleCloseConversation = useCallback(() => {
-    setActiveConversation(null);
-    setActiveContact(null);
     setMessages([]);
-    // Clearing the ref lets the deep-link auto-selector fire again if
-    // the user later visits /inbox?c=<same-id> — desirable UX.
-    autoSelectedForDeepLinkRef.current = null;
-    router.replace("/inbox", { scroll: false });
+    router.push("/inbox", { scroll: false });
   }, [router]);
 
 
@@ -559,11 +520,8 @@ function InboxPageInner() {
       setConversations((prev) =>
         prev.map((c) => (c.id === conversationId ? { ...c, status } : c))
       );
-      if (activeConversation?.id === conversationId) {
-        setActiveConversation((prev) => (prev ? { ...prev, status } : prev));
-      }
     },
-    [activeConversation]
+    []
   );
 
   const handleAssignChange = useCallback(
@@ -575,15 +533,8 @@ function InboxPageInner() {
             : c
         )
       );
-      if (activeConversation?.id === conversationId) {
-        setActiveConversation((prev) =>
-          prev
-            ? { ...prev, assigned_agent_id: assignedAgentId ?? undefined }
-            : prev
-        );
-      }
     },
-    [activeConversation]
+    []
   );
 
   // On mobile (<lg) we show a SINGLE pane — either the list or the

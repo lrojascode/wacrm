@@ -240,7 +240,7 @@ test.describe("P0-BUG-01 · diagnóstico de transiciones de auth", () => {
     // the dashboard — the "me devuelve al inicio" half of the report.
     await expect(page).toHaveURL(/\/login\?next=/);
     expect(decodeURIComponent(new URL(page.url()).searchParams.get("next") ?? "")).toBe(
-      `/inbox?c=${firstConversation.id}`,
+      `/inbox/${firstConversation.id}`,
     );
   });
 
@@ -253,7 +253,7 @@ test.describe("P0-BUG-01 · diagnóstico de transiciones de auth", () => {
     // `?next=` is that this lands them where they were.
     await context.clearCookies();
     await page.goto(
-      `/login?next=${encodeURIComponent(`/inbox?c=${firstConversation.id}`)}`,
+      `/login?next=${encodeURIComponent(`/inbox/${firstConversation.id}`)}`,
     );
 
     await page.waitForFunction(
@@ -275,7 +275,7 @@ test.describe("P0-BUG-01 · diagnóstico de transiciones de auth", () => {
     console.log(`\n=== P0-BUG-03 · vuelta tras iniciar sesión ===\n  URL: ${page.url()}\n`);
 
     expect(page.url()).not.toContain("/dashboard");
-    await expect(page).toHaveURL(new RegExp(`c=${firstConversation.id}`));
+    await expect(page).toHaveURL(new RegExp(`/inbox/${firstConversation.id}$`));
     await expect(
       page.getByTestId("message-thread").getByText(firstConversation.firstMessage),
     ).toBeVisible({ timeout: 30_000 });

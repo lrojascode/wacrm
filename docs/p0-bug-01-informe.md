@@ -76,7 +76,7 @@ Esa mitad no se puede forzar desde el test, porque exige que dos procesos roten 
 |---|---|
 | **A** — El estado del Inbox vive bajo un gate que desmonta a sus hijos | Confirmado por lectura de código, y la expulsión reproducida lo ejerce: se pierde la conversación abierta |
 | **B** — Un `SIGNED_OUT` se convierte en `router.push("/login")` sin confirmar | **Confirmado con timeline.** El disparador era más estrecho de lo descrito |
-| **C** — `router.replace` no deja historial por conversación | Confirmado: la URL final del hilo abierto es `/inbox?c=…` tras varias selecciones |
+| **C** — `router.replace` no deja historial por conversación | Confirmado y **corregido** en P0-BUG-04: la ruta es ahora `/inbox/<id>` y la selección usa `push` |
 | **D** — Deep link resuelto solo en cliente | Confirmado por lectura de código; sin cambios |
 
 ---

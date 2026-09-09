@@ -123,7 +123,7 @@ export default function NotificationsPage() {
     (n: Notification) => {
       if (!n.read_at) markRead(n.id);
       if (n.conversation_id) {
-        router.push(`/inbox?c=${n.conversation_id}`);
+        router.push(`/inbox/${n.conversation_id}`);
       }
     },
     [markRead, router],
