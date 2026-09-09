@@ -21,7 +21,7 @@ import {
   type WhatsAppCall,
   type WhatsAppCallsWebhookChange,
 } from '@/lib/whatsapp/call-webhook'
-import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 /**
  * Shared inbound-webhook pipeline. Extracted out of the route handlers

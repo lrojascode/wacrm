@@ -10,7 +10,7 @@
 import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
-import { supabaseAdmin } from '@/lib/account/admin-client';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { toCsv } from '@/lib/export/csv';
 import { fetchAllPages } from '@/lib/export/paginate';
 

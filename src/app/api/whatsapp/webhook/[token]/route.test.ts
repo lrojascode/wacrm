@@ -20,7 +20,7 @@ interface FakeConfig {
 const configsByToken: Record<string, FakeConfig> = {}
 const configsByPhone: Record<string, FakeConfig> = {}
 
-vi.mock('@/lib/whatsapp/admin-client', () => ({
+vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: () => ({
     from(table: string) {
       if (table !== 'whatsapp_config') throw new Error(`unexpected table: ${table}`)

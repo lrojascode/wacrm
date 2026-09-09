@@ -8,7 +8,7 @@ import { generateReply } from '@/lib/ai/generate'
 import { buildSystemPrompt } from '@/lib/ai/defaults'
 import { latestUserMessage } from '@/lib/ai/query'
 import { logAiUsage } from '@/lib/ai/usage'
-import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { AiError } from '@/lib/ai/types'
 
 /**

@@ -26,7 +26,7 @@ import { NextResponse } from 'next/server'
 import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils'
 import { buildPrefilledMessage } from '@/lib/attribution/ref-token'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { supabaseAdmin } from '@/lib/ads/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function getClientIp(request: Request): string {
   const xff = request.headers.get('x-forwarded-for')

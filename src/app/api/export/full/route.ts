@@ -15,7 +15,7 @@
 import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
-import { supabaseAdmin } from '@/lib/account/admin-client';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { fetchAllPages } from '@/lib/export/paginate';
 import { keysetFilter, type Cursor } from '@/lib/api/v1/pagination';
 

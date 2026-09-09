@@ -10,7 +10,7 @@
  *     (content_type = 'call').
  */
 
-import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { resolveConversationByPhone } from '@/lib/whatsapp/resolve-conversation'
 import { isUniqueViolation } from '@/lib/contacts/dedupe'
 import { derivePresence, type StoredPresence } from '@/lib/presence'

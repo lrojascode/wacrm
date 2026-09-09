@@ -1,4 +1,4 @@
-import { supabaseAdmin } from './admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 // ------------------------------------------------------------
 // Builder payload → flat rows for automation_steps.

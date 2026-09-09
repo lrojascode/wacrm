@@ -11,7 +11,7 @@
 // and read-only here makes it easy to audit.
 // ============================================================
 
-import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 /** Shape of an `api_keys` row as the auth path consumes it. */
 export interface ApiKeyRow {

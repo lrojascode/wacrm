@@ -13,7 +13,7 @@ vi.mock('@/lib/auth/account', () => ({
   }),
 }))
 
-vi.mock('@/lib/whatsapp/admin-client', () => ({
+vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: vi.fn(),
 }))
 
@@ -25,7 +25,7 @@ vi.mock('@/lib/whatsapp/calls-api', () => ({
 }))
 
 import { requireRole } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { preAcceptCall, acceptCall, rejectCall, terminateCall } from '@/lib/whatsapp/calls-api'
 
 describe('Call Control Routes', () => {

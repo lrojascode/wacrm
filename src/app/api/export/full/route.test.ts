@@ -15,7 +15,7 @@ vi.mock('@/lib/auth/account', async (importOriginal) => {
   };
 });
 
-vi.mock('@/lib/account/admin-client', () => ({
+vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: mocks.supabaseAdmin,
 }));
 

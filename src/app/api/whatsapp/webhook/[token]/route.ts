@@ -2,7 +2,7 @@ import { NextResponse, after } from 'next/server'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { processWebhook, type WhatsAppWebhookEntry } from '@/lib/whatsapp/webhook-processing'
-import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 /**
  * Per-account WhatsApp webhook — for a client running their own Meta

@@ -14,7 +14,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
-import { supabaseAdmin } from '@/lib/ads/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { syncAllAdAccounts } from '@/lib/ads/sync'
 
 export async function POST() {

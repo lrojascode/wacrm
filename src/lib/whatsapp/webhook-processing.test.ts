@@ -31,7 +31,7 @@ function chainable(result: { data: unknown; error: unknown }) {
   return obj
 }
 
-vi.mock('@/lib/whatsapp/admin-client', () => ({
+vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: () => ({
     from(table: string) {
       fromCalls.push(table)

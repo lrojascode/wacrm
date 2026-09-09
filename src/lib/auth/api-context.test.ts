@@ -7,7 +7,7 @@ import { __resetRateLimitForTests, RATE_LIMITS } from "@/lib/rate-limit";
 
 // Mock the service-role client factory — requireApiKey only stashes
 // the returned client in the context; tests never call through it.
-vi.mock("@/lib/flows/admin-client", () => ({
+vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: () => ({ __isMockAdminClient: true }),
 }));
 

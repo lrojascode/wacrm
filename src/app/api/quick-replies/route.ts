@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 
 // Quick replies — reusable snippets (plain text or a saved interactive

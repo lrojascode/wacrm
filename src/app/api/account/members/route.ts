@@ -20,7 +20,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentAccount, requireRole, toErrorResponse } from "@/lib/auth/account";
 import { canManageMembers, isAccountRole } from "@/lib/auth/roles";
-import { supabaseAdmin } from "@/lib/account/admin-client";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   checkRateLimit,
   rateLimitResponse,

@@ -20,7 +20,7 @@
 import { NextResponse } from 'next/server'
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/account/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { MAX_BRAND_NAME_LEN, normalizeBrandName } from '@/lib/branding/brand'
 
 export async function PUT(request: Request) {

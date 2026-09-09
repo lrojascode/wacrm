@@ -5,8 +5,8 @@ import {
   type WhatsAppCall,
 } from './call-webhook'
 
-// Mock admin-client and resolve-conversation
-vi.mock('@/lib/whatsapp/admin-client', () => ({
+// Mock the service-role client and resolve-conversation
+vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: vi.fn(),
 }))
 
@@ -14,7 +14,7 @@ vi.mock('@/lib/whatsapp/resolve-conversation', () => ({
   resolveConversationByPhone: vi.fn(),
 }))
 
-import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { resolveConversationByPhone } from '@/lib/whatsapp/resolve-conversation'
 
 describe('call-webhook', () => {

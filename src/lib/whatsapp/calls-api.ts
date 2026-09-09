@@ -6,7 +6,7 @@
  */
 
 import { decrypt } from '@/lib/whatsapp/encryption'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export const META_CALLS_API_VERSION = 'v23.0'
 const META_CALLS_API_BASE = `https://graph.facebook.com/${META_CALLS_API_VERSION}`
