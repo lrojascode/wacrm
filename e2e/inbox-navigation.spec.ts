@@ -251,3 +251,88 @@ test.describe("inbox · conversaciones que no se pueden abrir", () => {
     await expect(page.getByText(acmeConversation.firstMessage)).toHaveCount(0);
   });
 });
+
+// ============================================================
+// P0-BUG-06 — el contexto de trabajo del Inbox sobrevive.
+//
+// Medido antes de implementar nada: el cambio de pestaña YA conservaba
+// los filtros, porque P0-BUG-02 dejó el árbol montado y P0-BUG-04 hizo
+// que moverse entre conversaciones re-renderice el mismo segmento. Lo
+// que no sobrevivía era una recarga ni una vuelta desde otra sección,
+// que sí remontan la página. Eso es lo que se cubre aquí.
+// ============================================================
+
+test.describe("inbox · el contexto de trabajo sobrevive", () => {
+  const searchBox = (page: Page) => page.getByPlaceholder(/Buscar|Search/i);
+
+  test("la búsqueda sobrevive a una recarga", async ({ page }) => {
+    await loginAs(page, "acmeOwner");
+    await page.goto("/inbox");
+    await expect(page.getByTestId("conversation-list")).toBeVisible();
+
+    await searchBox(page).fill(first.contactName);
+    await expect(searchBox(page)).toHaveValue(first.contactName);
+
+    await page.reload();
+
+    await expect(page.getByTestId("conversation-list")).toBeVisible({ timeout: 30_000 });
+    await expect(searchBox(page)).toHaveValue(first.contactName);
+  });
+
+  test("la búsqueda sobrevive a ir a otra sección y volver", async ({ page }) => {
+    await loginAs(page, "acmeOwner");
+    await page.goto("/inbox");
+    await expect(page.getByTestId("conversation-list")).toBeVisible();
+
+    await searchBox(page).fill(second.contactName);
+    await expect(searchBox(page)).toHaveValue(second.contactName);
+
+    await page.goto("/contacts");
+    await page.goto("/inbox");
+
+    await expect(page.getByTestId("conversation-list")).toBeVisible({ timeout: 30_000 });
+    await expect(searchBox(page)).toHaveValue(second.contactName);
+  });
+
+  // Ya funcionaba antes de esta tarea; se fija como guardia de regresión
+  // para que un cambio futuro en el gate de auth no vuelva a romperlo.
+  test("la búsqueda sobrevive a un cambio de pestaña", async ({ page }) => {
+    await loginAs(page, "acmeOwner");
+    await page.goto("/inbox");
+    await expect(page.getByTestId("conversation-list")).toBeVisible();
+
+    await searchBox(page).fill(first.contactName);
+
+    for (const state of ["hidden", "visible"] as const) {
+      await page.evaluate((value) => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => value,
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      }, state);
+      await page.waitForTimeout(500);
+    }
+
+    await expect(searchBox(page)).toHaveValue(first.contactName);
+  });
+
+  // El requisito explícito del criterio: cambiar de cuenta reinicia.
+  test("cambiar de cuenta no hereda los filtros de la anterior", async ({ page }) => {
+    await loginAs(page, "acmeOwner");
+    await page.goto("/inbox");
+    await expect(page.getByTestId("conversation-list")).toBeVisible();
+
+    await searchBox(page).fill(first.contactName);
+    await expect(searchBox(page)).toHaveValue(first.contactName);
+
+    await logout(page);
+    await loginAs(page, "globexOwner");
+    await page.goto("/inbox");
+    await expect(page.getByTestId("conversation-list")).toBeVisible({ timeout: 30_000 });
+
+    // Un filtro heredado escondería conversaciones en silencio, que es
+    // como se reporta "faltan mensajes".
+    await expect(searchBox(page)).toHaveValue("");
+  });
+});

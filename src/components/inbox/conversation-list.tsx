@@ -1,6 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  EMPTY_FILTER_STATE,
+  loadInboxFilterState,
+  saveInboxFilterState,
+} from "@/lib/inbox/filter-storage";
 import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
@@ -96,6 +102,8 @@ export function ConversationList({
     { label: t("filterClosed"), value: "closed" },
   ], [t]);
 
+  const { accountId } = useAuth();
+
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [loading, setLoading] = useState(true);
@@ -105,6 +113,44 @@ export function ConversationList({
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+
+  /**
+   * Restore the working context after mount (P0-BUG-06).
+   *
+   * Read here rather than in the `useState` initialisers on purpose:
+   * the server renders this component with the defaults, so reading
+   * storage synchronously would hydrate with different values and React
+   * would flag a mismatch. Same reasoning — and same shape — as the
+   * contact-panel toggle in the inbox page.
+   *
+   * Keyed on `accountId`, so switching accounts restores that account's
+   * context rather than inheriting the previous one. `restoredForRef`
+   * makes it fire once per account: without it, any later re-render
+   * would overwrite a filter the user had just changed.
+   */
+  const restoredForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!accountId || restoredForRef.current === accountId) return;
+    restoredForRef.current = accountId;
+    const stored = loadInboxFilterState(accountId);
+    setSearch(stored.search);
+    setFilter(stored.filter);
+    setSelectedTagIds(stored.selectedTagIds);
+    setSelectedCompany(stored.selectedCompany);
+  }, [accountId]);
+
+  // Persist on every change. Cheap (one small JSON write) and avoids
+  // having to find every mutation site — there are six.
+  useEffect(() => {
+    if (!accountId || restoredForRef.current !== accountId) return;
+    saveInboxFilterState(accountId, {
+      ...EMPTY_FILTER_STATE,
+      search,
+      filter,
+      selectedTagIds,
+      selectedCompany,
+    });
+  }, [accountId, search, filter, selectedTagIds, selectedCompany]);
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback

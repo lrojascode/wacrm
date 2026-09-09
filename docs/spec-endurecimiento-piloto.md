@@ -546,10 +546,30 @@ Nuevo `src/lib/inbox/resolve-conversation.ts` (+ test); `src/app/(dashboard)/inb
 *Resultado medido:* E2E **28/28** (4 saltados por diseño), incluidos el aislamiento entre cuentas y el cambio de cuenta sin residuos. typecheck 0, lint 0 errores y 41 warnings, 97 archivos / 912 tests, build 98 rutas.
 *Verificado que los tests detectan el bug:* contra la implementación anterior fallan 3 de los 4 casos nuevos. El cuarto —cambio de cuenta sin filtración— pasa en ambos, porque ese aislamiento ya lo garantizaba RLS: es guardia de regresión, no prueba del arreglo.
 
-**P0-BUG-06 — Persistir filtros, búsqueda y scroll**
-`src/components/inbox/conversation-list.tsx:99-104`, `src/components/inbox/message-thread.tsx`
-`sessionStorage` con clave que incluye `accountId`.
-*Aceptación:* cambiar de pestaña y volver conserva filtro, texto de búsqueda y posición de scroll; cambiar de cuenta los reinicia por completo.
+**P0-BUG-06 — Persistir filtros y búsqueda** — ✅ **COMPLETADA** (2026-09-09)
+Nuevo `src/lib/inbox/filter-storage.ts` (+ test); `src/components/inbox/conversation-list.tsx`; casos en `e2e/inbox-navigation.spec.ts`.
+
+**El criterio ya se cumplía en parte, medido antes de implementar nada.** Un sondeo E2E sobre el código existente dio:
+
+| Escenario | ¿Sobrevivía? |
+|---|---|
+| Cambiar de pestaña y volver | **Sí** — ya lo arreglaron P0-BUG-02 (el árbol deja de desmontarse) y P0-BUG-04 (mismo segmento de ruta) |
+| Ir a otra sección y volver | No |
+| Recargar | No |
+
+Así que la tarea real no era el cambio de pestaña sino la **recarga y la navegación entre secciones**, que sí remontan la página. Se implementa eso. El caso de la pestaña queda fijado igualmente como guardia de regresión, para que un cambio futuro en el gate de auth no lo rompa otra vez.
+
+*`sessionStorage`, no `localStorage`:* esto es contexto de trabajo transitorio, no una preferencia. Un filtro dejado en "no leídas" hace tres semanas no debe seguir escondiendo conversaciones en una pestaña nueva hoy. (El toggle del panel de contacto es el caso opuesto y usa `localStorage` correctamente.)
+
+*La clave lleva el `accountId`.* Dos personas compartiendo perfil de navegador —o una saltando entre sus propias cuentas— nunca heredan los filtros de la otra. Un filtro heredado esconde conversaciones en silencio, que es justo lo que se reporta como "faltan mensajes".
+
+*Lectura tras el montaje, no en el inicializador de `useState`:* el servidor renderiza con los valores por defecto, así que leer el almacenamiento de forma síncrona hidrataría con valores distintos y React marcaría un desajuste. Mismo patrón que ya usa el toggle del panel de contacto.
+
+*Alcance acotado a propósito:* **no se persiste la posición de scroll de la lista.** La lista se reordena por `last_message_at` con cada mensaje entrante, así que un desplazamiento restaurado apunta a conversaciones distintas de las que había al guardarlo — restaurarlo sería precisión aparente sin significado. El reporte pedía conservar "razonablemente" el contexto; los filtros y la búsqueda son la parte que sí lo tiene. La selección ya vive en la URL desde P0-BUG-04.
+
+*Aceptación:* cambiar de pestaña y volver conserva filtro y búsqueda; cambiar de cuenta los reinicia por completo.
+*Resultado medido:* E2E **36/36** (4 saltados por diseño). typecheck 0, lint 0 errores y 41 warnings, 98 archivos / 920 tests, build 98 rutas.
+*Verificado que los tests detectan el bug:* contra la implementación anterior fallan los dos escenarios nuevos (recarga y cambio de sección). Los otros dos pasan en ambos, porque ya funcionaban — guardias de regresión, no prueba del arreglo.
 
 ### P0 · Workstream SEC — Seguridad
 
