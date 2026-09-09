@@ -468,9 +468,11 @@ Tarea añadida durante la ejecución de P0-INFRA-01, que quedaba bloqueada por e
 *Aceptación:* `admin.listUsers()` responde 200 con cualquier tamaño de página.
 *Resultado medido:* antes, `per_page>=5` devolvía 500 `"Database error finding users"`; ahora 200 con `per_page=200`. Se reparó además la fila viva de la base local, porque el seed solo se reaplica en `supabase db reset`.
 
-**P0-INFRA-02 — Entorno de componentes React**
-`vitest.config.ts` — añadir un segundo proyecto con `environment: "jsdom"` y `@testing-library/react`, sin tocar el proyecto `node` existente.
-*Aceptación:* los 872 tests actuales siguen pasando sin cambios; un test de componente de ejemplo pasa.
+**P0-INFRA-02 — Entorno de componentes React** — ✅ **COMPLETADA** (2026-09-09)
+`vitest.config.ts` (dos proyectos vía `test.projects` de Vitest 4), nuevo `src/test-setup.dom.ts`; añadidos `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`.
+División **por extensión**: `*.test.ts` → `node`, `*.test.tsx` → `jsdom`. Mecánico a propósito: no hay nada que recordar al añadir un test, ni forma de aterrizar un test de componente en el proyecto `node` y perder una tarde con un `document is not defined`.
+*Aceptación:* los 872 tests existentes siguen pasando sin cambios; un test de componente pasa.
+*Resultado medido:* 94 archivos / 876 casos en verde (872 previos + 4 nuevos de P0-BUG-02). El único `.test.tsx` que ya existía usa `renderToStaticMarkup` y funciona igual en jsdom.
 
 ### P0 · Workstream BUG — Bug de navegación del Inbox
 
@@ -483,10 +485,14 @@ Nuevo `src/lib/diagnostics/auth-trace.ts`; instrumentado `src/hooks/use-auth.tsx
 *Corrige dos afirmaciones de §2.3* que la medición refutó. Ver el informe.
 *Sigue pendiente en staging:* la mitad de la carrera en la que el proxy escribe una cookie nueva y válida mientras el cliente descarta la suya — esa es la que hace aterrizar en `/dashboard` en vez de `/login`. La traza ya sabe reconocerla: una expulsión con `hasAuthCookie: true`.
 
-**P0-BUG-02 — El gate de auth deja de desmontar el árbol** *(Defecto A)*
-`src/app/(dashboard)/dashboard-shell.tsx:31-42`
-Sustituir las salidas tempranas por un overlay que se superpone manteniendo `{children}` montados.
-*Aceptación:* con `loading` forzado a `true` tras el montaje, el DOM del Inbox permanece y `activeConversation` no se pierde; test de componente que lo demuestra.
+**P0-BUG-02 — El gate de auth deja de desmontar el árbol** — ✅ **COMPLETADA** (2026-09-09) *(Defecto A)*
+`src/app/(dashboard)/dashboard-shell.tsx`, nuevo `src/app/(dashboard)/dashboard-shell.test.tsx`.
+Las salidas tempranas que devolvían spinner o `null` en lugar de `children` se sustituyen por un overlay superpuesto. Se introduce un latch `hasAuthenticated` que separa dos situaciones que necesitan trato opuesto: **antes** de la primera sesión no se monta el árbol (un visitante anónimo no debe montar el dashboard, y en carga fría no hay estado que perder); **después**, `children` no se desmontan pase lo que pase con auth.
+*Detalle de implementación:* el latch se fija **en render**, no en un efecto — es el patrón documentado de React para ajustar estado durante el renderizado. Hacerlo en un efecto pintaba un frame en la rama pre-auth después de que la sesión ya hubiera llegado, y además viola `react-hooks/set-state-in-effect`, que este repo tiene activa.
+*Aceptación:* con `loading` forzado a `true` tras el montaje, el DOM del Inbox permanece y el estado no se pierde; test de componente que lo demuestra.
+*Resultado medido:* 4 tests nuevos en verde. **Verificado que el test detecta el bug**: contra la implementación anterior fallan 3 de los 4. La evidencia es el conteo de montajes del hijo, no el marcado — un remontaje devuelve el mismo HTML y es invisible en un snapshot, pero es exactamente lo que pierde el estado.
+*Verificación adicional:* E2E 8/8, y comprobación visual de que el `relative` añadido al contenedor no altera el layout ni deja overlay parásito.
+*Lo que este cambio NO hace:* la redirección a `/login` sigue disparándose ante una sesión perdida — eso es P0-BUG-03. Lo que se garantiza aquí es que el contexto de trabajo no se destruye por el camino, que importa porque la medición de P0-BUG-01 mostró que la expulsión puede ocurrir con la pestaña oculta: el usuario no la ve suceder, vuelve y su trabajo ya no está.
 
 **P0-BUG-03 — Confirmar el sign-out antes de actuar** *(Defecto B)*
 `src/hooks/use-auth.tsx:352-369`, `src/app/(dashboard)/dashboard-shell.tsx:25-29`
