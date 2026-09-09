@@ -45,15 +45,23 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 -- through the UI, register normally at /login — that creates your own
 -- account alongside this one.
 -- ============================================================
+-- The token columns below are nullable in the schema but GoTrue scans
+-- them into non-nullable Go strings. Leaving them NULL makes any query
+-- that returns this row fail with "Database error finding users" — the
+-- Auth tab in Studio and every `admin.listUsers()` call, including the
+-- one the E2E seed uses. They are empty strings on every user GoTrue
+-- creates itself, so match that.
 INSERT INTO auth.users (
   instance_id, id, aud, role, email,
-  encrypted_password, email_confirmed_at, created_at, updated_at
+  encrypted_password, email_confirmed_at, created_at, updated_at,
+  confirmation_token, recovery_token, email_change, email_change_token_new, phone
 )
 VALUES (
   '00000000-0000-0000-0000-000000000000',
   '11111111-1111-1111-1111-111111111111',
   'authenticated', 'authenticated', 'dev@local.test',
-  '', NOW(), NOW(), NOW()
+  '', NOW(), NOW(), NOW(),
+  '', '', '', '', ''
 )
 ON CONFLICT (id) DO NOTHING;
 
