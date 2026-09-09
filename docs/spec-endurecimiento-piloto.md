@@ -440,10 +440,21 @@ Tarea añadida durante la ejecución: la deprecación la surfacea la actualizaci
 *Aceptación:* desaparece el aviso de deprecación del build; el proxy sigue aplicando la autorización de páginas.
 *Resultado medido:* aviso desaparecido; `build` exit 0 (98 rutas), `typecheck` exit 0, `lint` 0 errores, `test` 93 archivos / 872 casos, `src/proxy.test.ts` 4/4. **Verificado en runtime** contra el build de producción: las 7 rutas protegidas devuelven `opaqueredirect` (3xx de servidor) con `redirect: 'manual'` y `/login` devuelve 200 — prueba que aísla el proxy del redirect de cliente de `dashboard-shell.tsx:27`, que no puede producir un `opaqueredirect`.
 
-**P0-INFRA-01 — Introducir Playwright** *(bloqueante de P0-BUG)*
-`playwright.config.ts`, `e2e/`, `package.json`, CI.
-Proyectos `desktop-chromium` (1280×800) y `mobile-safari` (iPhone 13). Seeding contra un proyecto Supabase de test con dos cuentas y usuarios de los cuatro roles.
-*Aceptación:* `pnpm test:e2e` ejecuta un smoke (login → inbox → abrir conversación) en verde en ambos proyectos, local y CI; el seed es idempotente y reejecutable.
+**P0-INFRA-01 — Introducir Playwright** — ✅ **COMPLETADA** (2026-09-09) *(desbloquea P0-BUG)*
+`playwright.config.ts`, `e2e/`, `package.json`, `.github/workflows/e2e.yml`, nuevo `docs/testing-e2e.md`.
+Proyectos `desktop-chromium` (1280×800) y `mobile-safari` (iPhone 13). Seed contra la pila local de Supabase con dos cuentas (Acme, Globex) y los cuatro roles.
+*Aceptación:* `pnpm test:e2e` ejecuta un smoke (login → inbox → abrir conversación) en verde en ambos proyectos; el seed es idempotente y reejecutable.
+*Resultado medido:* **6/6 en verde** (3 specs × 2 proyectos) en 7.4s. Idempotencia verificada comparando conteos de filas entre dos pasadas completas — idénticos, y cero cuentas huérfanas. `typecheck` exit 0, `lint` 0 errores, `test` 93 archivos / 872 casos, `build` exit 0 (98 rutas).
+*Ids deterministas para conversaciones y contactos, no para cuentas:* forzar el id de cuenta exigiría re-keyear la fila del trigger de alta, y `profiles.account_id` la referencia sin `ON UPDATE CASCADE`. El seed los resuelve en runtime. Las pruebas cross-tenant solo necesitan el id de conversación.
+*Dos `data-testid` añadidos en producción* (`conversation-list`, `message-thread`): el último mensaje se renderiza a la vez como burbuja del hilo y como vista previa de la lista, así que sin acotar `getByText` resuelve a dos elementos y la aserción pasaría aunque el hilo nunca se abriera.
+*Tres trampas del entorno documentadas en `docs/testing-e2e.md`,* las tres capaces de disfrazarse de fallo de la aplicación: (1) el dev server de Next 16 **no hidata sobre `127.0.0.1`** —solo `localhost`— y sin hidratación todo formulario hace submit nativo, que se lee como "el login rechaza la contraseña"; (2) Next 16 no permite dos `next dev` en el mismo directorio, de ahí que la suite reutilice el puerto 3100 en vez de usar uno dedicado; (3) esperar a que los campos tengan valor **no** prueba hidratación, porque un input sin hidratar es no controlado y conserva el texto mientras `onSubmit` aún no existe.
+*Bug corregido de paso:* `supabase/seed.sql` insertaba el usuario `dev@local.test` dejando NULL cinco columnas de token que GoTrue escanea como `string` no nulo. Rompía **cualquier** `admin.listUsers()` y la pestaña Auth de Studio con "Database error finding users". Ver P0-INFRA-03.
+
+**P0-INFRA-03 — Corregir el usuario del seed de desarrollo** — ✅ **COMPLETADA** (2026-09-09)
+`supabase/seed.sql`
+Tarea añadida durante la ejecución de P0-INFRA-01, que quedaba bloqueada por este defecto. La fila `dev@local.test` se insertaba sin `confirmation_token`, `recovery_token`, `email_change`, `email_change_token_new` ni `phone`, que quedaban NULL. GoTrue los escanea en campos `string` de Go y falla al serializar cualquier página de resultados que incluya la fila.
+*Aceptación:* `admin.listUsers()` responde 200 con cualquier tamaño de página.
+*Resultado medido:* antes, `per_page>=5` devolvía 500 `"Database error finding users"`; ahora 200 con `per_page=200`. Se reparó además la fila viva de la base local, porque el seed solo se reaplica en `supabase db reset`.
 
 **P0-INFRA-02 — Entorno de componentes React**
 `vitest.config.ts` — añadir un segundo proyecto con `environment: "jsdom"` y `@testing-library/react`, sin tocar el proyecto `node` existente.

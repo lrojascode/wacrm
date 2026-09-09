@@ -469,7 +469,9 @@ export function ConversationList({
             <p className="text-sm text-muted-foreground">{t("noConversations")}</p>
           </div>
         ) : (
-          <div className="flex flex-col">
+          // See the note on `message-thread`: the list preview and the
+          // thread bubble carry the same text, so tests need to scope.
+          <div className="flex flex-col" data-testid="conversation-list">
             {filtered.map((conv) => (
               <ConversationItem
                 key={conv.id}

@@ -1068,7 +1068,15 @@ export function MessageThread({
       </div>
 
       {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      {/* `data-testid` because a conversation's last message renders in
+          two places at once — here as a bubble, and in the list as the
+          preview line — so E2E assertions have to be able to say which
+          one they mean. */}
+      <div
+        ref={scrollRef}
+        data-testid="message-thread"
+        className="flex-1 overflow-y-auto px-4 py-4"
+      >
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
