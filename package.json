@@ -75,15 +75,18 @@
     "typescript": "^6",
     "vitest": "^4.1.10"
   },
-  "overrides": {
-    "postcss": "^8.5.10",
-    "ip-address": "^10.1.1",
-    "fast-uri": "^3.1.2",
-    "hono": "^4.12.25",
-    "js-yaml": "^4.2.0",
-    "@babel/core": "^7.29.6"
-  },
   "pnpm": {
+    "overrides": {
+      "postcss": "^8.5.23",
+      "nanoid": "^3.3.18",
+      "browserslist": "^4.28.7",
+      "baseline-browser-mapping": "^2.11.0",
+      "ip-address": "^10.3.1",
+      "fast-uri": "^3.1.6",
+      "hono": "^4.13.5",
+      "js-yaml": "^4.3.2",
+      "@babel/core": "^7.29.6"
+    },
     "onlyBuiltDependencies": [
       "@parcel/watcher",
       "@swc/core",
