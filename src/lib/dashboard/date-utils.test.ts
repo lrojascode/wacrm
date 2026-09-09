@@ -105,19 +105,23 @@ describe("lastNDayKeys", () => {
 });
 
 describe("mondayIndex", () => {
+  // Build fixtures with the local-date constructor, never a date-only
+  // string. `new Date("2026-05-18")` parses as UTC midnight, which is
+  // still the 17th anywhere west of Greenwich, while mondayIndex reads
+  // the LOCAL day on purpose (see the header of date-utils.ts). A
+  // UTC-parsed fixture therefore passes only in UTC — which is why CI
+  // stayed green while every local run in the Americas failed.
+  const may = (day: number) => new Date(2026, 4, day); // month 4 = May
+
   it("maps Monday → 0 and Sunday → 6", () => {
-    expect(mondayIndex(new Date("2026-05-18"))).toBe(0); // Mon
-    expect(mondayIndex(new Date("2026-05-19"))).toBe(1); // Tue
-    expect(mondayIndex(new Date("2026-05-23"))).toBe(5); // Sat
-    expect(mondayIndex(new Date("2026-05-24"))).toBe(6); // Sun
+    expect(mondayIndex(may(18))).toBe(0); // Mon
+    expect(mondayIndex(may(19))).toBe(1); // Tue
+    expect(mondayIndex(may(23))).toBe(5); // Sat
+    expect(mondayIndex(may(24))).toBe(6); // Sun
   });
 
   it("aligns with DOW_SHORT_MON_FIRST labels", () => {
-    expect(DOW_SHORT_MON_FIRST[mondayIndex(new Date("2026-05-18"))]).toBe(
-      "Mon",
-    );
-    expect(DOW_SHORT_MON_FIRST[mondayIndex(new Date("2026-05-24"))]).toBe(
-      "Sun",
-    );
+    expect(DOW_SHORT_MON_FIRST[mondayIndex(may(18))]).toBe("Mon");
+    expect(DOW_SHORT_MON_FIRST[mondayIndex(may(24))]).toBe("Sun");
   });
 });
