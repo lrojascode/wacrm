@@ -88,6 +88,14 @@ export default defineConfig({
   webServer: {
     command: `pnpm run dev --port ${PORT}`,
     url: BASE_URL,
+    // Turns on the P0-BUG-01 auth tracing so the diagnostic spec can
+    // read the timeline. Inert everywhere else: the trace module is a
+    // no-op unless this is exactly "1".
+    //
+    // Note this only applies to a server Playwright starts itself. With
+    // `reuseExistingServer`, a dev server already running without the
+    // flag is used as-is and the diagnostic spec will skip.
+    env: { NEXT_PUBLIC_AUTH_TRACE: "1" },
     // Locally, reuse a server the developer already has running.
     reuseExistingServer: !process.env.CI,
     // A cold Next dev server compiles routes on demand; the first

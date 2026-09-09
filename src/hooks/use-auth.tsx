@@ -21,6 +21,10 @@ import {
   type AccountRole,
 } from "@/lib/auth/roles";
 import { isMode, isThemeId, type Mode, type ThemeId } from "@/lib/themes";
+import {
+  installAuthTraceHandle,
+  recordAuthTrace,
+} from "@/lib/diagnostics/auth-trace";
 
 interface Profile {
   id: string;
@@ -304,6 +308,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const supabase = createClient();
     let mounted = true;
 
+    // P0-BUG-01 diagnostics. The visibility listener is registered
+    // alongside the auth subscription so the trace interleaves the two
+    // in one ordered timeline — the question being answered is which
+    // auth event follows a return to the tab, and by how long.
+    installAuthTraceHandle();
+    const onVisibilityForTrace = () => {
+      recordAuthTrace("visibility", document.visibilityState);
+    };
+    document.addEventListener("visibilitychange", onVisibilityForTrace);
+
     const safetyTimer = setTimeout(() => {
       if (mounted) {
         console.warn("[AuthProvider] getSession() timed out after 3s");
@@ -351,6 +365,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
+      // Diagnostic for P0-BUG-01. auth-js fires an event on every
+      // visibilitychange → visible, so this is where a transient
+      // null-session event enters the app and becomes a sign-out.
+      // No-op unless NEXT_PUBLIC_AUTH_TRACE=1.
+      recordAuthTrace("auth-event", _event, { hasSession: session !== null });
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
@@ -371,6 +390,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
       clearTimeout(safetyTimer);
+      document.removeEventListener("visibilitychange", onVisibilityForTrace);
       subscription.unsubscribe();
     };
   }, [fetchProfile]);

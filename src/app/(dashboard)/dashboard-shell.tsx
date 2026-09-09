@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { AccountThemeSync } from "@/components/layout/account-theme-sync";
 import { CallProvider } from "@/components/calls/call-provider";
+import { recordAuthTrace } from "@/lib/diagnostics/auth-trace";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
 // itself can stay a server component and export metadata (noindex) —
@@ -24,6 +25,13 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && !user) {
+      // P0-BUG-01. This is the exact decision under investigation: the
+      // shell has concluded the user is signed out and is about to
+      // leave the page. The trace entry records whether the auth cookie
+      // was still in the jar — if it was, the proxy will bounce this
+      // /login visit straight to /dashboard and the user experiences it
+      // as "the app threw me out of the inbox" rather than as a logout.
+      recordAuthTrace("expulsion", "shell:no-user");
       router.push("/login");
     }
   }, [user, loading, router]);
