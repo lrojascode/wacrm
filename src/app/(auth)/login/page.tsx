@@ -5,6 +5,10 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
+import {
+  DEFAULT_SIGNED_IN_PATH,
+  sanitizeNextPath,
+} from "@/lib/auth/next-path";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,9 +72,13 @@ function LoginPageInner() {
     // back to /login — which looks like the page "just refreshing"
     // instead of signing in (issue #365). Mirrors the deliberate full
     // reload the invite-accept flow already uses in join/[token].
+    // An invite always wins: the user followed a link to accept it.
+    // Otherwise honour `?next=`, which is how the dashboard shell hands
+    // back the page someone was on when their session wobbled. Anything
+    // unsafe collapses to the dashboard (see sanitizeNextPath).
     const destination = inviteToken
       ? `/join/${encodeURIComponent(inviteToken)}`
-      : "/dashboard";
+      : (sanitizeNextPath(searchParams.get("next")) ?? DEFAULT_SIGNED_IN_PATH);
     window.location.href = destination;
   };
 

@@ -27,7 +27,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { loginAs } from "./support/auth";
-import { conversationsFor } from "./support/fixtures";
+import { conversationsFor, E2E_PASSWORD } from "./support/fixtures";
 
 const [firstConversation] = conversationsFor("acme");
 
@@ -226,11 +226,58 @@ test.describe("P0-BUG-01 · diagnóstico de transiciones de auth", () => {
         `\n  URL final: ${page.url()}\n`,
     );
 
-    // Documents today's behaviour so the fix has something to change.
-    // P0-BUG-03 must make this stop expelling on a *transient* failure;
-    // when it does, this assertion is the one that has to be inverted,
-    // deliberately and with the reason recorded.
-    expect(expulsions.length, "hoy una sesión perdida expulsa al usuario").toBeGreaterThan(0);
-    await expect(page).not.toHaveURL(/\/inbox/);
+    // The session really is gone here, so expelling is correct — what
+    // P0-BUG-03 changed is that it now happens only after the server
+    // confirms it. The trace shows `signout:confirmed` between the
+    // event and the expulsion, where before there were 3 ms of nothing.
+    expect(expulsions.length, "una sesión perdida y confirmada sí expulsa").toBe(1);
+    expect(
+      after.some((e) => e.label === "signout:confirmed"),
+      "la expulsión debe ir precedida de una confirmación contra el servidor",
+    ).toBe(true);
+
+    // And it remembers where the user was, rather than dumping them on
+    // the dashboard — the "me devuelve al inicio" half of the report.
+    await expect(page).toHaveURL(/\/login\?next=/);
+    expect(decodeURIComponent(new URL(page.url()).searchParams.get("next") ?? "")).toBe(
+      `/inbox?c=${firstConversation.id}`,
+    );
+  });
+
+  test("tras volver a entrar se aterriza en la conversación, no en el dashboard", async ({
+    page,
+    context,
+  }) => {
+    // Continues the reproduction above: the user was expelled from a
+    // conversation and is now signing back in. The whole point of
+    // `?next=` is that this lands them where they were.
+    await context.clearCookies();
+    await page.goto(
+      `/login?next=${encodeURIComponent(`/inbox?c=${firstConversation.id}`)}`,
+    );
+
+    await page.waitForFunction(
+      () => {
+        const form = document.querySelector("form");
+        return !!form && Object.keys(form).some((k) => k.startsWith("__reactFiber$"));
+      },
+      undefined,
+      { timeout: 30_000 },
+    );
+    await page.locator("#email").fill("e2e-acme-owner@local.test");
+    await page.locator("#password").fill(E2E_PASSWORD);
+    await page.locator('button[type="submit"]').click();
+
+    await page.waitForURL((url) => !url.pathname.startsWith("/login"), {
+      timeout: 30_000,
+    });
+
+    console.log(`\n=== P0-BUG-03 · vuelta tras iniciar sesión ===\n  URL: ${page.url()}\n`);
+
+    expect(page.url()).not.toContain("/dashboard");
+    await expect(page).toHaveURL(new RegExp(`c=${firstConversation.id}`));
+    await expect(
+      page.getByTestId("message-thread").getByText(firstConversation.firstMessage),
+    ).toBeVisible({ timeout: 30_000 });
   });
 });

@@ -9,6 +9,7 @@ import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { AccountThemeSync } from "@/components/layout/account-theme-sync";
 import { CallProvider } from "@/components/calls/call-provider";
 import { recordAuthTrace } from "@/lib/diagnostics/auth-trace";
+import { buildLoginPath } from "@/lib/auth/next-path";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
 // itself can stay a server component and export metadata (noindex) —
@@ -50,14 +51,23 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && !user) {
-      // P0-BUG-01. This is the exact decision under investigation: the
-      // shell has concluded the user is signed out and is about to
-      // leave the page. The trace entry records whether the auth cookie
-      // was still in the jar — if it was, the proxy will bounce this
-      // /login visit straight to /dashboard and the user experiences it
-      // as "the app threw me out of the inbox" rather than as a logout.
+      // Reaching here now means the sign-out was *confirmed* against
+      // the server (see use-auth.tsx), not merely reported. The trace
+      // entry stays because it is still the cheapest way to spot a
+      // wrong confirmation in staging: an expulsion logged with the
+      // auth cookie still present is one that should not have happened.
       recordAuthTrace("expulsion", "shell:no-user");
-      router.push("/login");
+      // Carry where they were, so signing back in returns them to the
+      // same conversation instead of dropping them on the dashboard —
+      // which is the "it threw me back to the start" half of the report.
+      // `buildLoginPath` drops anything that is not a safe in-app path.
+      router.push(
+        buildLoginPath(
+          typeof window === "undefined"
+            ? null
+            : `${window.location.pathname}${window.location.search}`,
+        ),
+      );
     }
   }, [user, loading, router]);
 

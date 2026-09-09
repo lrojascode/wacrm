@@ -111,3 +111,82 @@ describe("proxy — refreshed auth cookies survive redirects", () => {
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
   });
 });
+
+// ============================================================
+// P0-BUG-03 — `?next=` round trip.
+//
+// The rule that sends a signed-in user away from /login used to wipe
+// the query string and deposit them on /dashboard. That is the second
+// half of the reported bug: after a transient auth blip the cookie was
+// often still valid, so this branch fired and the user "ended up back
+// at the start" with nothing to indicate a sign-out had happened.
+// ============================================================
+
+describe("proxy — ?next= al volver de /login", () => {
+  it("devuelve al usuario a la ruta pedida en vez de a /dashboard", async () => {
+    mockUser = { id: "user-1" };
+
+    const res = await proxy(
+      new NextRequest("https://app.test/login?next=%2Finbox%3Fc%3Dabc-123"),
+    );
+
+    const location = res.headers.get("location")!;
+    expect(location).toContain("/inbox");
+    expect(location).toContain("c=abc-123");
+    expect(location).not.toContain("/dashboard");
+  });
+
+  it("cae a /dashboard cuando no hay next", async () => {
+    mockUser = { id: "user-1" };
+
+    const res = await proxy(new NextRequest("https://app.test/login"));
+
+    expect(res.headers.get("location")).toContain("/dashboard");
+  });
+
+  // Un `next` es controlable por quien envíe el enlace, así que esta es
+  // la prueba que impide convertir el login en un open redirect.
+  it.each([
+    ["absoluto", "https%3A%2F%2Fevil.example%2Fx"],
+    ["relativo al protocolo", "%2F%2Fevil.example"],
+    ["barra invertida", "%2F%5Cevil.example"],
+    ["javascript:", "javascript%3Aalert(1)"],
+  ])("ignora un next externo (%s) y usa /dashboard", async (_label, encoded) => {
+    mockUser = { id: "user-1" };
+
+    const res = await proxy(
+      new NextRequest(`https://app.test/login?next=${encoded}`),
+    );
+
+    const location = res.headers.get("location")!;
+    expect(location).toContain("/dashboard");
+    expect(location).not.toContain("evil.example");
+    // El destino tiene que seguir siendo del mismo origen.
+    expect(new URL(location).origin).toBe("https://app.test");
+  });
+
+  it("una invitación tiene prioridad sobre next", async () => {
+    mockUser = { id: "user-1" };
+
+    const res = await proxy(
+      new NextRequest("https://app.test/login?invite=abc123&next=%2Finbox"),
+    );
+
+    expect(res.headers.get("location")).toContain("/join/abc123");
+  });
+
+  it("al expulsar a un anónimo de una ruta protegida, guarda el destino", async () => {
+    mockUser = null;
+
+    const res = await proxy(
+      new NextRequest("https://app.test/inbox?c=abc-123"),
+    );
+
+    const location = new URL(res.headers.get("location")!);
+    expect(location.pathname).toBe("/login");
+    // El query original no debe quedar colgando en /login: antes una
+    // petición a /inbox?c=<id> se convertía en /login?c=<id>.
+    expect(location.searchParams.get("c")).toBeNull();
+    expect(location.searchParams.get("next")).toBe("/inbox?c=abc-123");
+  });
+});

@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { DEFAULT_SIGNED_IN_PATH, sanitizeNextPath } from '@/lib/auth/next-path'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -63,8 +64,28 @@ export async function proxy(request: NextRequest) {
       url.pathname = `/join/${encodeURIComponent(inviteToken)}`
       url.search = ''
     } else {
-      url.pathname = '/dashboard'
-      url.search = ''
+      // Honour `?next=` before falling back to the dashboard.
+      //
+      // This branch is the second half of the reported bug. When a
+      // transient auth blip sent the shell to /login, the session
+      // cookie was often still valid — so this rule fired, wiped the
+      // query string, and deposited the user on /dashboard. From the
+      // outside that looks exactly like "the app threw me back to the
+      // start", with no sign that a sign-out was ever involved.
+      //
+      // sanitizeNextPath rejects anything that is not a path-absolute
+      // in-app destination, so this cannot be turned into an open
+      // redirect by anyone who can get a user to click a /login link.
+      const next = sanitizeNextPath(request.nextUrl.searchParams.get('next'))
+      if (next) {
+        const target = new URL(next, request.nextUrl.origin)
+        url.pathname = target.pathname
+        url.search = target.search
+        url.hash = target.hash
+      } else {
+        url.pathname = DEFAULT_SIGNED_IN_PATH
+        url.search = ''
+      }
     }
     return withRefreshedCookies(NextResponse.redirect(url))
   }
@@ -74,6 +95,15 @@ export async function proxy(request: NextRequest) {
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    // Remember the destination so signing in returns them to it. The
+    // previous version only replaced the pathname, which left the
+    // original query string dangling on /login (a request for
+    // /inbox?c=<id> became /login?c=<id>) — meaningless to the login
+    // page, and the conversation was lost either way.
+    const next = sanitizeNextPath(
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    )
+    url.search = next ? `?next=${encodeURIComponent(next)}` : ''
     return withRefreshedCookies(NextResponse.redirect(url))
   }
 

@@ -494,10 +494,25 @@ Las salidas tempranas que devolvían spinner o `null` en lugar de `children` se 
 *Verificación adicional:* E2E 8/8, y comprobación visual de que el `relative` añadido al contenedor no altera el layout ni deja overlay parásito.
 *Lo que este cambio NO hace:* la redirección a `/login` sigue disparándose ante una sesión perdida — eso es P0-BUG-03. Lo que se garantiza aquí es que el contexto de trabajo no se destruye por el camino, que importa porque la medición de P0-BUG-01 mostró que la expulsión puede ocurrir con la pestaña oculta: el usuario no la ve suceder, vuelve y su trabajo ya no está.
 
-**P0-BUG-03 — Confirmar el sign-out antes de actuar** *(Defecto B)*
-`src/hooks/use-auth.tsx:352-369`, `src/app/(dashboard)/dashboard-shell.tsx:25-29`
-Un `SIGNED_OUT` (o sesión nula) no cierra sesión de inmediato: se verifica con `getUser()` tras una ventana de gracia corta. Solo si se confirma, se limpia estado y se redirige. La redirección lleva `?next=<ruta actual>` para volver al mismo sitio.
-*Aceptación:* un `SIGNED_OUT` transitorio seguido de sesión válida **no** produce navegación (test unitario con el cliente de auth mockeado); un sign-out real sí redirige a `/login`; volviendo a entrar se aterriza en la conversación previa, no en `/dashboard`.
+**P0-BUG-03 — Confirmar el sign-out antes de actuar** — ✅ **COMPLETADA** (2026-09-09) *(Defecto B)*
+`src/hooks/use-auth.tsx`, `src/app/(dashboard)/dashboard-shell.tsx`, `src/proxy.ts`, `src/app/(auth)/login/page.tsx`; nuevo `src/lib/auth/next-path.ts` (+ test); nuevos `src/hooks/use-auth.test.tsx` y casos en `src/proxy.test.ts` y `e2e/auth-trace.spec.ts`.
+
+Un evento con sesión nula deja de aplicarse de inmediato: se confirma con `getUser()` tras 1,2 s. Solo un **no definitivo del servidor** cierra la sesión.
+
+*Criterio de "definitivo", que es el núcleo del arreglo:* un `AuthRetryableFetchError`, un 5xx o un error sin `status` son **transporte**, no evidencia, y no cierran nada. Es la misma distinción que hace auth-js en `_recoverAndRefresh` y que P0-BUG-01 midió (6 intentos de red fallidos, sesión preservada). Confirmado que `AuthSessionMissingError` llega con `status` 400 (`auth-js errors.js:115-118`), así que un cierre real sí se aplica.
+
+*Falla en abierto a propósito, y no es una decisión de seguridad:* `user` en el cliente es solo UI. La autorización vive en el proxy y en RLS, que no sirven datos a un token inválido. Equivocarse en esta dirección cuesta una pantalla desactualizada; en la contraria, el trabajo del usuario.
+
+*Un `signOut()` deliberado se aplica al instante*, sin viaje de ida y vuelta: el usuario lo pidió.
+
+*Segunda mitad, el `?next=`:* la redirección arrastra la ruta actual, y **el proxy la respeta** (`src/proxy.ts`). Antes hacía `url.search = ''` y depositaba al usuario en `/dashboard` — ese era literalmente el "me devuelve al inicio" del reporte. El propio redirect del proxy a `/login` también guarda ahora el destino, en vez de dejar el query original colgando (`/inbox?c=<id>` se convertía en `/login?c=<id>`).
+
+*Riesgo introducido y cerrado:* un `next` es controlable por quien envíe el enlace, así que sin validar sería un **open redirect**. Un único `sanitizeNextPath` compartido por proxy, shell y login rechaza URLs absolutas, `//host` relativo al protocolo, variantes con barra invertida, esquemas peligrosos, espacios y control chars, y las propias páginas de auth (bucle). 12 tests, incluidos los cuatro vectores externos.
+
+*Aceptación:* un `SIGNED_OUT` transitorio seguido de sesión válida **no** produce navegación; un sign-out real sí redirige a `/login`; volviendo a entrar se aterriza en la conversación previa, no en `/dashboard`.
+*Resultado medido:* los tres criterios verdes. Traza de la reproducción E2E: `SIGNED_OUT` (1513 ms) → `signout:confirmed` (2716 ms) → `expulsion` (2759 ms) → `/login?next=%2Finbox%3Fc%3D…`. Los **3 ms** de margen que midió P0-BUG-01 son ahora una ventana de confirmación de 1,2 s. El viaje de vuelta aterriza en `/inbox?c=<id>` con el hilo visible.
+*Verificado que los tests detectan el bug:* contra la implementación anterior fallan 2 de los 5 casos de `use-auth`.
+*Verificación global:* typecheck 0, lint 0 errores, 96 archivos / 901 tests, build 98 rutas, E2E 9/9.
 
 **P0-BUG-04 — Ruta por conversación e historial** *(Defecto C)*
 Nuevo `src/app/(dashboard)/inbox/[conversationId]/page.tsx`; `src/app/(dashboard)/inbox/page.tsx` pasa a lista. Selección con `router.push`. Redirección 308 de `/inbox?c=<id>` a `/inbox/<id>` para no romper enlaces existentes.

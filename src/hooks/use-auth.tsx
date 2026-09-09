@@ -133,6 +133,37 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
+ * How long to wait before asking the server whether a null-session
+ * event was real.
+ *
+ * Long enough for auth-js to finish an in-flight refresh and emit the
+ * session it recovers; short enough that a genuine sign-out still feels
+ * immediate. The measurement in docs/p0-bug-01-informe.md put the old
+ * gap between event and redirect at 3 ms.
+ */
+const SIGN_OUT_CONFIRM_DELAY_MS = 1_200;
+
+/**
+ * Is this failure "the network let us down" rather than "the server
+ * says you are not signed in"?
+ *
+ * Only the second justifies ending the session. auth-js marks the first
+ * kind with `AuthRetryableFetchError`, and its own refresh path makes
+ * exactly this distinction — see the comment at GoTrueClient
+ * `_recoverAndRefresh`, which refuses to drop a session on a retryable
+ * error. Anything without a definite HTTP status is treated as
+ * transport, which is the conservative reading.
+ */
+function isRetryableAuthFailure(error: unknown): boolean {
+  if (!error) return false;
+  const err = error as { name?: string; status?: number };
+  if (err.name === "AuthRetryableFetchError") return true;
+  if (typeof err.status !== "number") return true;
+  // 5xx is the server failing, not the caller being unauthenticated.
+  return err.status >= 500;
+}
+
+/**
  * AuthProvider — wrap this around the dashboard layout.
  * Makes ONE getSession() call for the whole tree instead of one per
  * component, avoiding internal lock contention in the Supabase client.
@@ -304,9 +335,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Set by `signOut()` so the listener can tell a user-initiated sign
+  // out (apply at once) from one the library reported on its own
+  // (verify first). Survives across renders because the auth listener
+  // reads it long after signOut returns.
+  const deliberateSignOutRef = useRef(false);
+
   useEffect(() => {
     const supabase = createClient();
     let mounted = true;
+    let pendingSignOutTimer: ReturnType<typeof setTimeout> | null = null;
 
     // P0-BUG-01 diagnostics. The visibility listener is registered
     // alongside the auth subscription so the trace interleaves the two
@@ -317,6 +355,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       recordAuthTrace("visibility", document.visibilityState);
     };
     document.addEventListener("visibilitychange", onVisibilityForTrace);
+
+    // ---- Sign-out confirmation (P0-BUG-03, defect B) ----
+    //
+    // A null-session event is a question, not an answer. These helpers
+    // hold the app steady while that question is settled.
+
+    const applySignedOut = () => {
+      if (!mounted) return;
+      lastFetchedUserIdRef.current = null;
+      setUser(null);
+      setProfile(null);
+      setAccount(null);
+      setProfileLoading(false);
+      setLoading(false);
+    };
+
+    const cancelPendingSignOut = () => {
+      if (pendingSignOutTimer !== null) {
+        clearTimeout(pendingSignOutTimer);
+        pendingSignOutTimer = null;
+      }
+    };
+
+    const confirmSignOut = () => {
+      // Already checking; a second event during the window changes
+      // nothing.
+      if (pendingSignOutTimer !== null) return;
+
+      pendingSignOutTimer = setTimeout(async () => {
+        pendingSignOutTimer = null;
+        if (!mounted) return;
+
+        let confirmed: boolean;
+        try {
+          const { data, error } = await supabase.auth.getUser();
+          if (data?.user) {
+            // The session was there all along. Adopt it and carry on —
+            // the user never noticed anything.
+            recordAuthTrace("auth-event", "signout:refuted", { hasSession: true });
+            if (!mounted) return;
+            setUser(data.user);
+            if (data.user.id !== lastFetchedUserIdRef.current) {
+              fetchProfile(data.user.id);
+            }
+            setLoading(false);
+            return;
+          }
+          // Only a definitive "no user" counts. A transport failure is
+          // not evidence of anything.
+          confirmed = !isRetryableAuthFailure(error);
+        } catch {
+          // Threw rather than returned an error: treat as transport.
+          confirmed = false;
+        }
+
+        if (!confirmed) {
+          // Keep the session as-is. This fails OPEN on purpose, and it
+          // is not a security decision: `user` here drives UI only.
+          // Authorisation lives in the proxy and in RLS, neither of
+          // which will serve data to an invalid token. The cost of a
+          // wrong guess in this direction is a stale-looking screen;
+          // in the other direction it is the user's work, destroyed.
+          recordAuthTrace("auth-event", "signout:unverified", { hasSession: false });
+          setLoading(false);
+          return;
+        }
+
+        recordAuthTrace("auth-event", "signout:confirmed", { hasSession: false });
+        applySignedOut();
+      }, SIGN_OUT_CONFIRM_DELAY_MS);
+    };
 
     const safetyTimer = setTimeout(() => {
       if (mounted) {
@@ -365,37 +474,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
-      // Diagnostic for P0-BUG-01. auth-js fires an event on every
-      // visibilitychange → visible, so this is where a transient
-      // null-session event enters the app and becomes a sign-out.
-      // No-op unless NEXT_PUBLIC_AUTH_TRACE=1.
+      // Diagnostic for P0-BUG-01. No-op unless NEXT_PUBLIC_AUTH_TRACE=1.
       recordAuthTrace("auth-event", _event, { hasSession: session !== null });
       const currentUser = session?.user ?? null;
-      setUser(currentUser);
 
       if (currentUser) {
+        // A session arrived, so any pending confirmation is moot.
+        cancelPendingSignOut();
+        setUser(currentUser);
         if (currentUser.id !== lastFetchedUserIdRef.current) {
           fetchProfile(currentUser.id);
         }
-      } else {
-        lastFetchedUserIdRef.current = null;
-        setProfile(null);
-        setAccount(null);
-        setProfileLoading(false);
+        setLoading(false);
+        return;
       }
 
-      setLoading(false);
+      // ---- Null session. Do NOT take it at face value. ----
+      //
+      // This is the fix for defect B. P0-BUG-01 measured the old
+      // behaviour: a SIGNED_OUT arrived and 3 ms later the shell had
+      // already redirected. There was no window in which anything could
+      // check whether the session was actually gone.
+      //
+      // A deliberate signOut() is different — the user asked for it, so
+      // it applies at once and without a network round trip.
+      if (deliberateSignOutRef.current) {
+        applySignedOut();
+        return;
+      }
+
+      confirmSignOut();
     });
 
     return () => {
       mounted = false;
       clearTimeout(safetyTimer);
+      cancelPendingSignOut();
       document.removeEventListener("visibilitychange", onVisibilityForTrace);
       subscription.unsubscribe();
     };
   }, [fetchProfile]);
 
   const signOut = useCallback(async () => {
+    // Tell the auth listener this one is intentional, so it skips the
+    // confirmation round trip and does not leave the UI up for a
+    // second after the user clicked "sign out".
+    deliberateSignOutRef.current = true;
     const supabase = createClient();
     await supabase.auth.signOut();
     setUser(null);
