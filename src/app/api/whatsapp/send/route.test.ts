@@ -11,6 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const conversationInserts: Array<Record<string, unknown>> = []
 const messageInserts: Array<Record<string, unknown>> = []
 
+// Role the fake profile reports. `agent` is the minimum this route
+// accepts; one test drops it to `viewer` to prove the guard bites.
+let callerRole = 'agent'
+
 // Toggles for the per-test scenario.
 let existingConversation: Record<string, unknown> | null = null
 let contactRow: Record<string, unknown> | null = null
@@ -35,7 +39,15 @@ function makeSupabaseMock() {
     const selectResult = () => {
       switch (table) {
         case 'profiles':
-          return { data: { account_id: 'acct-1' }, error: null }
+          // `account_role` matters since P0-SEC-02: the route resolves
+          // the caller's role through withRoute, so a profile row
+          // without one now fails the guard rather than the query.
+          return {
+            data: { account_id: 'acct-1', account_role: callerRole },
+            error: null,
+          }
+        case 'accounts':
+          return { data: { id: 'acct-1', name: 'Acme' }, error: null }
         case 'contacts':
           return { data: contactRow, error: null }
         case 'conversations':
@@ -179,6 +191,7 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     existingConversation = null
     createdConversation = null
     contactRow = CONTACT
+    callerRole = 'agent'
     supabaseMock = makeSupabaseMock()
     sendTemplateMessage.mockClear()
   })
@@ -257,5 +270,30 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
       }),
     )
     expect(res.status).toBe(400)
+  })
+
+  // P0-SEC-02. Until this route went through withRoute it authenticated
+  // the caller and scoped the query by account, but never looked at the
+  // role — so a viewer, whose whole definition is read-only, could send
+  // a WhatsApp message to a customer.
+  it('403s for a viewer, who may not send messages', async () => {
+    callerRole = 'viewer'
+    supabaseMock = makeSupabaseMock()
+
+    const res = await POST(
+      new Request('http://localhost/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contact_id: CONTACT.id,
+          message_type: 'template',
+          template_name: 'welcome',
+        }),
+      }),
+    )
+
+    expect(res.status).toBe(403)
+    // Y no llegó a hablar con Meta.
+    expect(sendTemplateMessage).not.toHaveBeenCalled()
   })
 })

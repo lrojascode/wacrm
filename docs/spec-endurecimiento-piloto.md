@@ -573,16 +573,31 @@ Así que la tarea real no era el cambio de pestaña sino la **recarga y la naveg
 
 ### P0 · Workstream SEC — Seguridad
 
-**P0-SEC-01 — Envoltorio de autorización `withRoute`**
-Nuevo `src/lib/auth/guard.ts` sobre los predicados existentes de `src/lib/auth/roles.ts`.
-*Aceptación:* tests unitarios cubren los cuatro roles × permitido/denegado; devuelve 401 sin sesión y 403 con rol insuficiente, con envelope de error consistente.
+**P0-SEC-01 — Envoltorio de autorización `withRoute`** — ✅ **COMPLETADA** (2026-09-09)
+Nuevo `src/lib/auth/guard.ts` (+ `guard.test.ts`) sobre `requireRole` y los predicados de `roles.ts`.
+*Por qué un envoltorio, si `requireRole` ya existía:* el problema nunca fue la lógica sino que usarla era **opcional**. La ausencia de una comprobación es invisible en revisión — cada ruta resolvía bien la cuenta, simplemente no miraba el rol. El envoltorio convierte la declaración en parte de la forma de la ruta, no en un paso de su cuerpo.
+*Aceptación:* tests unitarios cubren los cuatro roles × permitido/denegado; 401 sin sesión y 403 con rol insuficiente.
+*Resultado medido:* **20 tests**, con la matriz completa 4×4 (cada rol contra cada `minRole`) más los casos límite. Afirmar un camino feliz y una denegación habría pasado por alto un desajuste de un peldaño en `hasMinRole`, que es el error que le daría a `agent` la superficie de `admin`.
+*Detalle:* un fallo del handler devuelve **500, no 403**. Reportar un bug como problema de autorización manda a quien depure a mirar roles durante horas.
+*Lección de método:* el primer test mockeaba `getCurrentAccount` y **no interceptaba nada** — `requireRole` la llama por su propio ámbito de módulo. Se mockea el cliente de Supabase una capa más abajo, de modo que corre la cadena real `getCurrentAccount → requireRole → hasMinRole`.
 
-**P0-SEC-02 — Aplicar `withRoute` a las 10 rutas desprotegidas**
-Las de la tabla de §1.2. Asignación: `whatsapp/send` y `whatsapp/react` → `agent`; `whatsapp/broadcast`, `templates/*`, `flows/*` → `admin`; `whatsapp/config/verify-registration` → `owner`; `whatsapp/media/[mediaId]` → `viewer` (lectura, ya filtrada por cuenta).
-*Aceptación:* un `viewer` recibe 403 en las diez rutas (test de integración por ruta); `agent` y superiores conservan el comportamiento actual; ningún test existente se rompe.
+**P0-SEC-02 — Aplicar `withRoute` a las rutas desprotegidas** — ✅ **COMPLETADA** (2026-09-09)
+Las 10 de §1.2, más `whatsapp/config` (ver abajo). Asignación aplicada: `whatsapp/send` y `whatsapp/react` → `agent`; `whatsapp/broadcast`, `templates/submit`, `templates/[id]`, `templates/sync`, `flows/templates`, `flows/[id]/runs` → `admin`; `whatsapp/config` (POST/DELETE) y `config/verify-registration` → `owner`; `whatsapp/media/[mediaId]` → `viewer`.
 
-**P0-SEC-03 — Test de CI que impide reabrir la brecha**
-*Aceptación:* enumera `src/app/api/**/route.ts` y falla si alguno no usa `withRoute` sin estar en la allowlist justificada; se verifica añadiendo temporalmente una ruta sin guard.
+*Clasificación previa de las 71 rutas, para no rotar de más:* 43 ya usaban `requireRole` —correctas—, 11 usan `requireApiKey` (API pública), 6 son legítimamente sin sesión (webhooks, invitaciones, crons), 1 autenticaba sin decidir rol, y 10 no comprobaban nada. Migrar las 43 correctas habría sido rotación con riesgo de regresión y cero ganancia de seguridad, así que **no se tocaron**.
+
+*Hallazgo adicional:* `whatsapp/config` **no era una brecha** —POST y DELETE ya rechazaban a quien no fuera owner— pero lo hacía con una comparación `role !== 'owner'` a medida que esquivaba `roles.ts`. Convertida para eliminar esa deriva. Su `GET` se deja intacto a propósito: su contrato documentado es devolver 200 siempre para que la UI muestre un mensaje en vez de un error, y `requireRole` lo habría convertido en 403 en un caso límite.
+
+*Aceptación:* un `viewer` recibe 403; `agent` y superiores conservan el comportamiento; ningún test existente se rompe.
+*Resultado medido:* **E2E 54/54**. `e2e/role-enforcement.spec.ts` ejercita las rutas con una sesión real de `viewer` —cookies reales, handlers reales— porque la UI ya le esconde los botones y esconder un botón no es autorización. **Verificado que detecta el bug: 7 de sus 9 casos fallan contra la implementación anterior.** Los 2 que pasan en ambos son los contrapesos (un viewer sí lee el proxy de media; un agent sí envía), que existen para que la suite no pasara igual si el guard rechazara a todo el mundo.
+*Test existente actualizado:* `whatsapp/send/route.test.ts` fallaba porque su mock devolvía `account_id` sin `account_role`. Corregido y ampliado con la aserción que le faltaba: un viewer recibe 403 y no llega a hablar con Meta.
+*Cambio de comportamiento a comunicar (D-7):* un `viewer` deja de poder enviar mensajes y reaccionar. Es lo que fija la política acordada —"viewer: lectura; agent: operación"— pero afecta a cualquiera que hoy dependa de esa permisividad.
+
+**P0-SEC-03 — Test de CI que impide reabrir la brecha** — ✅ **COMPLETADA** (2026-09-09)
+`src/lib/auth/route-guards.test.ts`.
+*Invariante exigida:* que **exista una decisión de rol**, no que se use un helper concreto. Cuentan `withRoute` y `requireRole`; `getCurrentAccount()` a secas **no**, porque autentica y acota por cuenta pero no decide quién puede llamar — que es exactamente el hueco por el que un viewer podía enviar mensajes.
+*Aceptación:* enumera `src/app/api/**/route.ts` y falla si alguna no declara rol sin estar en la allowlist justificada.
+*Resultado medido:* pasa con 0 rutas sin declarar. El test se guarda a sí mismo (falla si el barrido devuelve menos de 50 rutas, para que un glob roto no lo vuelva vacuo), exige que cada excepción lleve escrito su mecanismo de autenticación, y detecta entradas muertas en la allowlist.
 
 **P0-SEC-04 — Corregir SSRF y memoria en descarga de imágenes**
 `src/lib/whatsapp/template-header-handle.ts:46,59,63`
