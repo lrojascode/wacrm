@@ -1,0 +1,181 @@
+# Deploy en Coolify — qué SQL correr en Supabase, y en qué orden
+
+Este archivo existe porque en este montaje **no hay migration runner**: los
+bundles de `docs/deploy/` se pegan a mano en el editor SQL de Supabase, y nada
+registra que corrieron. La única respuesta honesta a *"¿qué me falta?"* la da
+`check-applied.sql`, y la única respuesta honesta a *"¿y funciona?"* la da
+probarlo.
+
+> **El orden importa, y este es el seguro: primero el SQL, después el
+> redeploy.** Todos los cambios de esquema de esta tanda son aditivos, así que
+> el código que ya está corriendo en producción sigue funcionando contra el
+> esquema nuevo. Al revés apuntarías código nuevo a objetos que todavía no
+> existen.
+
+---
+
+## 0. Antes de nada: saber dónde estás
+
+En el editor SQL de cada proyecto de cliente:
+
+```sql
+-- pega docs/deploy/check-applied.sql
+```
+
+Cada fila debe decir `APPLIED`. Anota las que digan `MISSING` — esas son las
+que tienes que correr, y solo esas.
+
+**Excepción conocida:** `047 owner-only settings` sale `MISSING` en local tras
+un `supabase db reset` aunque la migración corriera. Es un artefacto del stack
+local, no de producción; está explicado en [README.md](README.md#nota-sobre-supabase-db-reset-y-la-migración-047).
+
+---
+
+## 1. Proyecto nuevo (cliente que empieza)
+
+Un solo archivo, una sola vez:
+
+```
+docs/deploy/full-install.sql          -- migraciones 001 → 052
+```
+
+Pesa ~300 KB. Si el editor se atraganta o reporta un error de sintaxis que no
+tiene sentido, no es el SQL: es su separador de sentencias del lado del
+cliente. Cada migración empieza con un banner `-- ####`; se puede correr por
+tramos copiando de banner a banner.
+
+Después salta al **paso 3 (verificación)**. No hace falta nada más.
+
+---
+
+## 2. Proyecto existente — los dos parches de seguridad de esta tanda
+
+Estos dos **no son mejoras, son parches**. Hasta aplicarlos, ese proyecto está
+expuesto. Córrelos antes que cualquier otra cosa pendiente.
+
+### 2.1 `revoke-public-execute.sql` — obligatorio (052)
+
+```
+docs/deploy/revoke-public-execute.sql
+```
+
+**Qué arregla.** Postgres concede `EXECUTE` a `PUBLIC` en toda función nueva
+sin que nadie lo escriba, y una función `SECURITY DEFINER` se salta RLS por
+definición. Once funciones de este esquema quedaban invocables con la clave
+`anon` — la que viaja dentro del bundle del navegador y es pública por diseño.
+
+Medido, sin sesión alguna:
+
+```
+POST /rest/v1/rpc/record_webhook_failure {"endpoint_id":"<uuid>","max_failures":1}
+→ HTTP 204   ·   ese endpoint pasa de is_active=true a false
+```
+
+Cualquiera desactivaba el webhook de cualquier inquilino con una petición.
+
+### 2.2 `profile-privilege-columns.sql` — solo si la fila 034 dice MISSING
+
+```
+docs/deploy/profile-privilege-columns.sql
+```
+
+**Qué arregla.** Sin este trigger, cualquier usuario con sesión se asciende a
+`owner` —o se muda al inquilino de otro— con un PATCH desde la consola del
+navegador. Ambos se cuelan por la política RLS porque `user_id` no cambia: RLS
+acota **qué filas** puedes escribir, no **qué columnas**.
+
+Hasta ahora la 034 solo viajaba dentro de `full-install.sql`, así que un
+proyecto migrado bundle a bundle podía no tenerla sin que nada lo dijera.
+
+### 2.3 El resto de bundles pendientes
+
+Los que `check-applied.sql` marque como `MISSING`, en orden numérico. Cada uno
+es idempotente.
+
+> **No corras `full-install.sql` sobre una base en producción** para "ponerla
+> al día". No destruye datos, pero reejecuta 52 migraciones enteras —incluido
+> rehacer políticas y restricciones— cuando lo que necesitas son las dos que
+> faltan.
+
+---
+
+## 3. Verificación — `APPLIED` no es lo mismo que "funciona"
+
+Las filas de `check-applied.sql` preguntan al catálogo si un objeto existe.
+Para las dos de seguridad eso es necesario y **no suficiente**: un trigger
+puede estar presente y no parar el ataque. Estas dos comprobaciones se hacen
+una vez por proyecto, a mano.
+
+### 3.1 Ninguna función `SECURITY DEFINER` sigue abierta
+
+```sql
+SELECT p.proname
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.prosecdef
+  AND has_function_privilege('public', p.oid, 'EXECUTE');
+```
+
+**Cero filas.** Si devuelve una función que el bundle no menciona, ese proyecto
+tiene una que nosotros no conocemos: revócala y concede solo el rol que la
+llama de verdad.
+
+### 3.2 La escalada de privilegio está cerrada
+
+Con un usuario **no-owner** real de ese proyecto con sesión abierta, coge su
+access token del navegador (Application → Cookies, el valor `sb-<ref>-auth-token`):
+
+```bash
+curl -i -X PATCH \
+  "https://<ref>.supabase.co/rest/v1/profiles?user_id=eq.<su-uuid>" \
+  -H "apikey: <ANON_KEY>" \
+  -H "Authorization: Bearer <SU_ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"account_role":"owner"}'
+```
+
+Debe devolver **403 con código 42501**. Y el camino legítimo debe seguir
+abierto:
+
+```bash
+  ... -d '{"full_name":"El Mismo Nombre"}'     # → 204
+```
+
+Si el primero devuelve 204, ese proyecto está expuesto: cualquiera con sesión
+se hace owner. Para antes de desplegar.
+
+---
+
+## 4. Redeploy en Coolify
+
+Solo cuando el paso 3 esté limpio:
+
+1. Merge a `main`.
+2. Redeploy en Coolify.
+
+**No hacen falta variables de entorno nuevas** para esta tanda.
+`NEXT_PUBLIC_AUTH_TRACE` sigue siendo opcional y solo para staging.
+
+---
+
+## 5. Cambios de comportamiento que conviene avisar antes
+
+No son bugs; son las decisiones de esta tanda. Si alguien depende de lo de
+antes, se va a notar el mismo día del deploy.
+
+| Cambio | A quién afecta |
+|---|---|
+| **Un `viewer` ya no puede enviar mensajes ni reaccionar.** Es lo que fija la política de roles (*viewer: lectura; agent: operación*), pero antes la comprobación simplemente no existía en diez rutas. | Cualquier cuenta donde alguien con rol `viewer` esté operando de hecho. Conviene revisar los roles reales antes del deploy. |
+| **La imagen de cabecera de una plantilla debe ser `https://` y pública.** Direcciones privadas, `localhost` e internas se rechazan, y la descarga se corta a 5 MB. | Un montaje con Supabase autoalojado en red privada: la URL del bucket sería interna y quedaría rechazada. No afecta a Supabase gestionado. |
+| **Las URLs del inbox llevan ahora el id de conversación** (`/inbox/<id>`). Los enlaces antiguos `?c=<id>` siguen funcionando con un 308. | Nadie, pero explica por qué la 052 importa más que antes: ese id ahora viaja en enlaces y capturas. |
+
+---
+
+## 6. Si algo falla
+
+- **«permission denied for function ...» después de la 052.** Una función
+  legítima se quedó sin su concesión. No reabras `PUBLIC`: concédesela
+  nominalmente al rol que la llama (`service_role` para el backend,
+  `authenticated` para el navegador) y anótalo en la migración.
+- **`check-applied.sql` da `MISSING` en algo que juras haber corrido.** Lee la
+  fila: dice qué objeto busca. Suele ser que el editor cortó el script a la
+  mitad por el separador de sentencias.

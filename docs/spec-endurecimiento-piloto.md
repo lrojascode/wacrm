@@ -662,9 +662,40 @@ Cualquiera desactivaba el webhook de cualquier inquilino con una petición. `cla
 
 *Dos correcciones a mi propio test, encontradas al escribirlo:* leía solo hasta el `$$` de apertura y se dejaba fuera las cinco funciones que declaran `SECURITY DEFINER` **después** del cuerpo —entre ellas `record_webhook_failure`, la que motivó todo esto—, y se leía a sí mismo, contando como concesión real un `GRANT ALL ON ALL FUNCTIONS` citado dentro de un comentario explicativo.
 
-**P0-SEC-06 — Verificar la 034 en producción y automatizar el chequeo**
-`docs/deploy/check-applied.sql`
-*Aceptación:* el script comprueba la existencia del trigger `enforce_profile_privilege_columns` en `public.profiles` y de la función; ejecutado contra cada proyecto de cliente da APPLIED; se documenta la prueba manual real (un `PATCH` de `account_role` con JWT de viewer debe devolver 42501), corrigiendo la nota de `034:53-55`.
+**P0-SEC-06 — Verificar la 034 en producción y automatizar el chequeo** — ✅ **COMPLETADA** (2026-09-09)
+`docs/deploy/check-applied.sql`, `docs/deploy/profile-privilege-columns.sql`, `docs/deploy/coolify.md`, `e2e/privilege-columns.spec.ts`, `supabase/migrations/034_fix_profiles_update_rls.sql` (cabecera).
+*Aceptación:* el script comprueba la existencia del trigger y de la función; da APPLIED; se documenta la prueba manual real (un `PATCH` de `account_role` con JWT de viewer debe devolver 42501), corrigiendo la nota de `034:53-55`.
+
+*El punto de partida.* La cabecera de la 034 terminaba con **«this migration was not run against a live database»**. Para una defensa contra escalada de privilegios eso equivale a no tenerla: nadie sabía si funcionaba. La tarea era comprobarlo, no asumirlo.
+
+*Comprobado contra una base viva, por PostgREST, con el JWT real de un viewer:*
+
+| Intento | Resultado |
+|---|---|
+| `PATCH profiles {"account_role":"owner"}` | **403 / 42501** |
+| `PATCH profiles {"account_id":"<otro inquilino>"}` | **403 / 42501** |
+| `PATCH profiles {"full_name":"...", "account_role":"admin"}` | **403 / 42501** |
+| `PATCH profiles {"full_name":"..."}` | **204** |
+| `rpc/set_member_role` como owner | **204** |
+
+La 034 hace lo que promete. Los dos últimos son contrapesos deliberados: un trigger que rechazara *toda* escritura sobre `profiles` pasaría los tres primeros y rompería el producto.
+
+*Se ataca PostgREST, no la UI,* porque la UI ni siquiera ofrece ese campo. El ataque es un `fetch` desde la consola del navegador de cualquiera con sesión, y el discriminador de la 034 es `current_user = 'authenticated'`: probarlo con la clave de servicio habría recorrido el camino legítimo y no habría demostrado nada.
+
+*De prueba manual a test permanente.* La comprobación vive ahora en `e2e/privilege-columns.spec.ts`, no en un comentario. **Verificado que detecta la ausencia:** al quitar el trigger fallan sus tres casos de ataque y los dos contrapesos siguen pasando.
+
+*Un hallazgo del propio mutation check, y su arreglo.* Sin el trigger, los ataques **funcionan de verdad**: el viewer terminó siendo `admin` en el inquilino ajeno. Eso arrastraba un cuarto fallo sin relación —la RPC supervisada, que ya no encontraba a los dos usuarios en la misma cuenta— y ese cuarto fallo es justo el que manda a depurar en la dirección equivocada. Se añadió un `afterEach` que restaura el fixture pase lo que pase: en verde no hay nada que limpiar, existe para el caso rojo.
+
+*Dos huecos de despliegue que aparecieron al mirar:*
+
+1. **La 034 no tenía bundle propio.** Solo viajaba dentro de `full-install.sql`, así que un proyecto migrado bundle a bundle podía no tenerla sin que nada lo dijera — y `check-applied.sql` tampoco la miraba. Nuevo `docs/deploy/profile-privilege-columns.sql`.
+2. **`APPLIED` no es lo mismo que «funciona».** Las filas de `check-applied.sql` preguntan al catálogo si un objeto existe; un trigger puede estar presente y no parar el ataque. Se añade al final del script el `curl` exacto de la comprobación manual, una vez por proyecto. La fila comprueba además el cuerpo de la función (`prosrc`), porque un trigger cuya función se sustituyera por algo inerte seguiría apareciendo en `pg_trigger`.
+
+*Resultado medido:* `typecheck` 0, `lint` 0 errores / 41 warnings (línea base), 102 archivos / 974 tests, `build` 98 rutas, **E2E 64/64** (4 saltados por diseño; 54 → 64 por los cinco casos nuevos en los dos proyectos).
+
+*Arreglo colateral, en `eslint.config.mjs`.* `pnpm lint` falló con cientos de errores en un CodeMirror minificado: ESLint estaba analizando `playwright-report/`, que Playwright solo escribe **cuando un test falla**. El síntoma va al revés de lo que uno esperaría —arreglas el test que fallaba, corres lint, y lint falla ahora— y el config ya documentaba exactamente este mismo problema para los directorios de la CLI de Supabase. Se añaden `playwright-report/**` y `test-results/**` a los ignores.
+
+*Nota menor:* el spec de ataque no usa navegador, pero Playwright lo corre igual en los dos proyectos (`desktop-chromium` y `mobile-safari`). Cuesta ~2 s y evita configuración extra; se deja así a sabiendas.
 
 **P0-SEC-07 — Registro de migraciones aplicadas** *(cierra §1.3 punto 3)*
 Nueva tabla `schema_release` + bloque de registro al final de cada bundle de `docs/deploy/`.

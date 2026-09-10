@@ -4793,9 +4793,29 @@ CREATE POLICY ai_usage_log_select ON ai_usage_log FOR SELECT
 --   sanctioned writer runs as postgres (DEFINER) or service_role,
 --   and PostgREST’s browser clients run as `authenticated`. If you
 --   ever add a NON-definer RPC or a new role that must write these
---   columns, extend the guard’s role check accordingly. Validate in
---   your own environment before relying on this (see the checks at
---   the bottom); this migration was not run against a live database.
+--   columns, extend the guard’s role check accordingly.
+--
+--   VALIDATED (2026-09-09, P0-SEC-06). This header used to end with
+--   "this migration was not run against a live database", which for a
+--   privilege-escalation defence is the same as not having one: it
+--   was never known to work. It has now been run against a live
+--   instance, through PostgREST, with a real viewer’s JWT:
+--
+--     PATCH profiles {"account_role":"owner"}      -> 403 / 42501
+--     PATCH profiles {"account_id":"<other>"}      -> 403 / 42501
+--     PATCH profiles {"full_name":"..."}           -> 204
+--     rpc/set_member_role (as owner)               -> 204
+--
+--   The counterweights matter as much as the denials: a trigger that
+--   rejected every write to `profiles` would pass the first two and
+--   break the product.
+--
+--   This is now a standing regression test, not a one-off: see
+--   e2e/privilege-columns.spec.ts. Verified that it detects the
+--   absence -- dropping this trigger fails its three attack cases,
+--   and the two counterweights keep passing. While the trigger was
+--   dropped the viewer really did end up `admin` in the other
+--   tenant, which is what the attack does when nothing stops it.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.enforce_profile_privilege_columns()
@@ -4824,8 +4844,14 @@ CREATE TRIGGER enforce_profile_privilege_columns
   FOR EACH ROW EXECUTE FUNCTION public.enforce_profile_privilege_columns();
 
 -- ============================================================
--- Manual validation (run against a live instance — no automated
--- SQL test harness exists in this repo):
+-- Validation
+--
+-- Automated, and run on every `pnpm test:e2e`:
+--   e2e/privilege-columns.spec.ts
+--
+-- Against a client project you have just migrated, the same four
+-- checks by hand — the catalog can only tell you the trigger exists,
+-- not that it works:
 --
 --   1. As a viewer/member JWT via PostgREST, both of these must
 --      return 42501 (insufficient_privilege):
@@ -4837,6 +4863,9 @@ CREATE TRIGGER enforce_profile_privilege_columns
 --   3. The member/invitation RPCs (set_member_role,
 --      transfer_account_ownership, redeem_invitation) must still
 --      succeed — they run SECURITY DEFINER as postgres.
+--
+-- docs/deploy/check-applied.sql carries the copy-pasteable curl for
+-- step 1, and docs/deploy/coolify.md places it in the deploy order.
 -- ============================================================
 
 -- ############################################################

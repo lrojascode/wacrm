@@ -6,6 +6,13 @@ los que se pegan, y **todos se generan** desde `supabase/migrations/` con
 `scripts/deploy/bundle-migrations.sh` — nunca se editan a mano, o dejan de
 coincidir con lo que corre en local.
 
+## Desplegar en Coolify
+
+Si lo que buscas es *"¿qué SQL corro y en qué orden para hacer un deploy?"*,
+está en **[coolify.md](coolify.md)**: el orden de los bundles, las dos
+comprobaciones que el catálogo no puede hacer por ti, y los cambios de
+comportamiento que conviene avisar antes de desplegar.
+
 ## Cuál usar
 
 | Situación | Archivo |
@@ -24,7 +31,7 @@ Se corre **una vez**, antes de desplegar el código de la aplicación.
 
 Después, `check-applied.sql` debe reportar todas las filas como `APPLIED`.
 
-> **Pesa ~292 KB.** Si el editor de Supabase se atraganta o reporta un error
+> **Pesa ~305 KB.** Si el editor de Supabase se atraganta o reporta un error
 > de sintaxis que no tiene sentido, no es el SQL: es su separador de
 > sentencias del lado del cliente. Cada migración empieza con un banner
 > `-- ####` y son independientes en ese orden, así que se puede correr por

@@ -22,6 +22,14 @@ const eslintConfig = defineConfig([
     // that was never part of this project.
     "supabase/.temp/**",
     "supabase/.branches/**",
+    // Same story for Playwright's output. These only appear after a
+    // failing run (that is when the HTML report and its trace viewer
+    // get written), so the symptom is backwards from what you would
+    // guess: you fix the failing test, run lint, and lint now fails on
+    // hundreds of errors in a minified CodeMirror bundle. They are in
+    // .gitignore, which ESLint does not read here.
+    "playwright-report/**",
+    "test-results/**",
   ]),
 ]);
 

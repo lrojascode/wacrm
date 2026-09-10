@@ -160,6 +160,39 @@ WITH checks AS (
     'docs/deploy/account-appearance.sql'
   UNION ALL
   SELECT
+    -- 034 stops the browser client from writing its own account_role /
+    -- account_id. Without it a `viewer` promotes itself to `owner`, or
+    -- moves into another tenant, with one PATCH -- both slip past the
+    -- RLS policy because `user_id` never changes, and RLS constrains
+    -- WHICH ROWS you may write, not WHICH COLUMNS.
+    --
+    -- This row exists because 034's own header admitted it had "not
+    -- been run against a live database". It has now: see
+    -- e2e/privilege-columns.spec.ts, and the manual PATCH below.
+    --
+    -- Both halves are checked. A trigger whose function was replaced by
+    -- something inert would still show up in pg_trigger, so the guard
+    -- clause inside the function is checked too.
+    '034 profile privilege columns',
+    EXISTS (
+      SELECT 1 FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE NOT t.tgisinternal
+        AND n.nspname = 'public' AND c.relname = 'profiles'
+        AND t.tgname = 'enforce_profile_privilege_columns'
+    )
+    AND EXISTS (
+      SELECT 1 FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'enforce_profile_privilege_columns'
+        AND p.prosrc LIKE '%account_role%'
+        AND p.prosrc LIKE '%current_user%'
+    ),
+    'docs/deploy/profile-privilege-columns.sql'
+  UNION ALL
+  SELECT
     -- 052 is the only row here that checks an ABSENCE, and it is the
     -- one worth reading twice.
     --
@@ -192,4 +225,38 @@ SELECT
   bundle
 FROM checks
 ORDER BY release;
+
+-- ============================================================
+-- APPLIED IS NOT THE SAME AS WORKING -- the one manual check
+--
+-- Every row above asks the catalog whether an object exists. For 034
+-- that is necessary and not sufficient: a trigger can be present and
+-- still not stop the attack (wrong role name in the guard, a policy
+-- that shadows it, a PostgREST connection that does not run as
+-- `authenticated`). The only honest confirmation is to try the attack.
+--
+-- Do this ONCE per client project, right after applying, with a real
+-- non-owner user of that project signed in to the app. Take their
+-- access token from the browser (Application -> Cookies, the
+-- `sb-<ref>-auth-token` value) and run:
+--
+--   curl -i -X PATCH \
+--     "https://<ref>.supabase.co/rest/v1/profiles?user_id=eq.<their-uuid>" \
+--     -H "apikey: <ANON_KEY>" \
+--     -H "Authorization: Bearer <THEIR_ACCESS_TOKEN>" \
+--     -H "Content-Type: application/json" \
+--     -d '{"account_role":"owner"}'
+--
+-- MUST return 403 with code 42501 and the message about the member /
+-- invitation RPCs. Then confirm the legitimate path still works:
+--
+--   ... -d '{"full_name":"Same Name"}'      -> 204
+--
+-- If the first one returns 204, that project is exposed: any user with
+-- a session can make themselves owner. Stop and fix before deploying.
+--
+-- Measured against the local stack (2026-09-09): 403/42501 for the
+-- promotion, 403/42501 for the tenant hop, 204 for the name change,
+-- 204 for `set_member_role` called by an owner.
+-- ============================================================
 
