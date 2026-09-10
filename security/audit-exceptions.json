@@ -1,0 +1,24 @@
+{
+  "$comment": [
+    "Advisories high+ que se toleran a propósito (P0-DEP-04).",
+    "",
+    "Cada entrada necesita:",
+    "  advisory          El id de GitHub (GHSA-...), tal como lo da `pnpm audit --json`.",
+    "  package           Qué paquete lo trae. Informativo, pero obliga a mirarlo.",
+    "  reason            Por qué se tolera HOY. No 'pendiente': la razón concreta.",
+    "  closingCondition  Qué tiene que pasar para poder borrar esta entrada.",
+    "  expires           YYYY-MM-DD. Obligatoria, y acotada: 30 días si el",
+    "                    advisory alcanza el árbol de producción, 90 si es solo",
+    "                    de desarrollo. El ámbito NO se declara aquí: se deriva",
+    "                    de dónde aparece de verdad.",
+    "",
+    "Caducada bloquea. Demasiado lejana, también. Y una entrada que ya no",
+    "corresponde a ningún advisory bloquea igual: una excepción muerta hace",
+    "creer que el problema sigue vivo.",
+    "",
+    "La lista está VACÍA a propósito. Las 6 high que había (brace-expansion",
+    "vía eslint) se arreglaron con overrides en vez de excusarse, que es",
+    "siempre la primera opción. Ver docs/security/dependencies.md."
+  ],
+  "exceptions": []
+}

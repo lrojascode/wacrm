@@ -439,9 +439,23 @@ Matiz corregido durante la ejecución: `shadcn` **no** es solo CLI — `src/app/
 *Deliberadamente no hecho:* **no se aplicó override a `sharp`.** `next@16.2.6` declara `sharp: ^0.34.5` y el parche es `0.35.4`, fuera de rango; `sharp` tiene bindings nativos y el fallo sería en runtime (optimización de imágenes), no en build. `next@16.3.3` **deja de declarar `sharp`**, así que P0-DEP-01 cierra esos 2 advisories por eliminación.
 *Deuda creada:* los overrides de `postcss` y `nanoid` quedan **retirables tras P0-DEP-01** (`next@16.3.3` ya fija `postcss: 8.5.23`). Revisarlos en ese PR; un override redundante fija una versión que nadie revisa. Detalle en `docs/security/dependencies.md`.
 
-**P0-DEP-04 — Auditoría de dependencias en CI**
-`.github/workflows/`
+**P0-DEP-04 — Auditoría de dependencias en CI** — ✅ **COMPLETADA** (2026-09-10)
+`.github/workflows/ci.yml`, `scripts/security/audit.mjs`, `scripts/security/audit-policy.mjs`, `security/audit-exceptions.json`, `src/lib/security/audit-policy.test.ts`.
 *Aceptación:* el job falla ante cualquier advisory `high`+ nuevo; existe un mecanismo de excepción con fecha de caducidad obligatoria.
+
+*Antes de construir el gate, se arreglaron las 6 `high` que había.* Los tres advisories de `brace-expansion` llegaban por `eslint` y `eslint-config-next`, y se cierran con **dos overrides por rango** —`brace-expansion@1` y `@5`— porque conviven dos líneas de versión en el árbol y un único override habría roto el `minimatch` que espera la otra. **De 6 a 0**, con lint, typecheck, tests y build verificados. Excusar lo que se puede arreglar habría estrenado el mecanismo con una mentira: la lista de excepciones nace vacía.
+
+*Dos ámbitos, y el ámbito se deriva.* Una vulnerabilidad en `eslint` corre en el portátil de quien programa; una en producción viaja al servidor que atiende a los clientes. Tratarlas igual lleva a uno de dos sitios, ambos malos: o se bloquea el trabajo por un plugin de linting, o se acaba tolerando lo que sí importa. El ámbito sale de comparar `pnpm audit --prod` con el árbol completo, **no de lo que declare la excepción** — una excepción no puede llamarse «de desarrollo» para ganar plazo.
+
+*La caducidad, con dientes y con techo.* Obligatoria; caducada bloquea; y **acotada** a 30 días en producción y 90 en desarrollo, porque sin tope basta escribir 2099 y el problema desaparece para siempre. Conservar una excepción exige volver a fecharla, y volver a fecharla *es* la revisión. Una excepción que ya no corresponde a ningún advisory también bloquea — mismo criterio que la allowlist de `route-guards.test.ts`: una entrada muerta hace creer que el problema sigue vivo.
+
+*La política es ESM plano, no TypeScript, a propósito:* el gate lo ejecuta Node en CI, y Node no importa `.ts` sin un cargador. Añadir uno habría metido una dependencia más en la cadena de suministro justo para hacer funcionar el control que existe para vigilarla. Los tipos van en JSDoc; la corrección la sostienen los 17 tests.
+
+*Job aparte* del de lint/typecheck/test/build: corren en paralelo, así que no alarga el CI, y cuando falla, falla solo él. Dentro del otro, un advisory nuevo aparecería como «CI en rojo» junto a un build correcto, que es la forma más rápida de que alguien lo dé por un fallo del pipeline.
+
+*Verificado que el gate bloquea de verdad, y de dos formas.* El primer intento de comprobarlo **no valió**: quitar los overrides no reintrodujo las vulnerabilidades, porque el lockfile conservaba las versiones parcheadas — la mutación fue inefectiva, no el gate. La comprobación buena baja el umbral a `moderate` y confirma que la tubería entera —ejecutar, parsear, evaluar, salir— nombra los 5 `moderate` reales con su paquete y su GHSA, y **sale con código 1**; restaurado el umbral, 0.
+
+*Resultado medido:* `typecheck` 0, `lint` 0 errores / 41 warnings, **106 archivos / 1046 tests**, `build` 100 rutas, `audit:ci` en verde con 0 `high` y 0 excepciones abiertas.
 
 ### P0 · Workstream INFRA — Infraestructura de pruebas
 

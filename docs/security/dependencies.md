@@ -129,8 +129,76 @@ Origen único: `src/app/icon.tsx:11` (`export const runtime = "edge"`), la ruta 
 
 ---
 
+## El gate de CI — ✅ **ACTIVO** (2026-09-10, P0-DEP-04)
+
+`pnpm audit:ci` (job `audit` en `.github/workflows/ci.yml`) falla ante
+cualquier advisory `high` o superior que no tenga una excepción vigente.
+
+**Corre en un job aparte** del de lint/typecheck/test/build. Van en
+paralelo, así que no alarga el CI, y cuando falla, falla solo él: dentro
+del otro, un advisory nuevo aparecería como «CI en rojo» junto a un
+build correcto, que es la forma más rápida de que alguien lo lea por
+encima y lo dé por un fallo del pipeline.
+
+### Dos ámbitos, porque el riesgo no es el mismo
+
+Una vulnerabilidad en `eslint` corre en el portátil de quien programa y
+en CI; una en una dependencia de producción viaja al servidor que
+atiende a los clientes. Tratarlas igual lleva a uno de dos sitios, ambos
+malos: o se bloquea el trabajo por un plugin de linting, o se acaba
+tolerando lo que sí importa.
+
+El ámbito **se deriva** de en qué árbol aparece el advisory
+(`pnpm audit --prod` contra el completo), **no se declara**. Una
+excepción no puede llamarse a sí misma «de desarrollo» para ganar plazo.
+
+### La caducidad es obligatoria, y acotada
+
+Las excepciones viven en `security/audit-exceptions.json`. Cada una
+exige `reason`, `closingCondition` y `expires`.
+
+| Regla | Por qué |
+|---|---|
+| Sin `expires` no hay excepción | Una excepción sin fecha es una decisión que nadie vuelve a tomar. |
+| Caducada → **bloquea** | Es lo que le da dientes a la fecha. |
+| Máximo **30 días** (producción) / **90** (desarrollo) | Sin tope basta escribir 2099 y el problema desaparece para siempre. Conservarla exige volver a fecharla, y volver a fecharla *es* la revisión. |
+| Excepción que ya no corresponde a nada → **bloquea** | Una entrada muerta se queda ahí y hace creer que el advisory sigue vivo. Mismo criterio que la allowlist de `route-guards.test.ts`. |
+
+Las reglas se prueban en `src/lib/security/audit-policy.test.ts`, sin
+red ni disco: un gate que falla en abierto no se nota, porque CI sigue
+verde y nadie vuelve a mirar.
+
+**Ahora mismo la lista de excepciones está vacía**, y esa es la primera
+opción siempre: las 6 `high` que había se arreglaron, no se excusaron
+(ver abajo).
+
+## Las 6 `high` de desarrollo: arregladas, no excusadas — ✅ (2026-09-10)
+
+Los tres advisories de `brace-expansion` (GHSA-3jxr-9vmj-r5cp,
+GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895), que llegaban por `eslint` y
+`eslint-config-next`, se cierran con dos overrides por rango:
+
+```json
+"brace-expansion@1": "^1.1.18",
+"brace-expansion@5": "^5.0.9"
+```
+
+Dos entradas y no una porque conviven **dos líneas de versión** en el
+árbol —1.1.15 y 5.0.6, con parches en 1.1.18 y 5.0.9— y un único
+override habría roto el `minimatch` que espera la otra.
+
+Resultado: `high` de 6 a **0** en el árbol completo. Verificado que
+lint, typecheck, tests y build siguen pasando.
+
+Quedan 2 `low` y 5 `moderate`, todos fuera de producción y por debajo
+del umbral del gate.
+
 ## Política
 
-- **P0-DEP-04** añadirá un job de CI que falla ante cualquier advisory `high` o superior.
-- Toda excepción exige entrada en este documento con justificación y condición de cierre.
-- Ninguna excepción sobrevive al gate del piloto (§10 de la spec): la condición es cero `critical` y cero `high`.
+- Arreglar es siempre la primera opción: `pnpm update`, o un override en
+  `pnpm.overrides` si el paquete vulnerable es transitivo. La excepción
+  es el último recurso, no el primero.
+- Toda excepción exige entrada en `security/audit-exceptions.json` con
+  justificación, condición de cierre y **fecha de caducidad**.
+- Ninguna excepción sobrevive al gate del piloto (§10 de la spec): la
+  condición es cero `critical` y cero `high`.
