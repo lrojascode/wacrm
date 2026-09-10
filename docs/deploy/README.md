@@ -33,8 +33,16 @@ Después, `check-applied.sql` debe reportar todas las filas como `APPLIED`.
 ### Bundles por release — base existente
 
 `owner-only-settings.sql`, `brand-display.sql`, `contact-tasks.sql`,
-`calls.sql`, `account-appearance.sql`, `ads-attribution.sql`, etc. Cada uno
-cubre una entrega concreta.
+`calls.sql`, `account-appearance.sql`, `ads-attribution.sql`,
+`revoke-public-execute.sql`, etc. Cada uno cubre una entrega concreta.
+
+> **`revoke-public-execute.sql` (052) no es una mejora, es un parche de
+> seguridad.** Hasta aplicarlo, once funciones `SECURITY DEFINER` —que se
+> saltan RLS por definición— son invocables con la clave `anon`, la que va
+> dentro del bundle del navegador. Comprobado: un solo POST anónimo a
+> `rpc/record_webhook_failure` desactivaba el webhook de cualquier
+> inquilino. Aplícalo en **todos** los proyectos de cliente antes que
+> cualquier otra cosa pendiente, y confirma con `check-applied.sql`.
 
 Se mantienen uno por release a propósito: al pegarlos a mano, *"¿cuál me
 falta correr?"* es exactamente la pregunta que un archivo fusionado vuelve
@@ -42,7 +50,7 @@ imposible de responder. `full-install.sql` no los reemplaza — resuelve un
 problema distinto (empezar de cero, donde no hay historial que consultar).
 
 **No corras `full-install.sql` sobre una base en producción** para "ponerla al
-día". Es idempotente y no destruye datos, pero reejecuta 51 migraciones
+día". Es idempotente y no destruye datos, pero reejecuta 52 migraciones
 enteras —incluidos rehacer políticas y restricciones— cuando lo que
 necesitas son las dos que faltan. Usa `check-applied.sql` para saber cuáles
 son y corre solo esos bundles.

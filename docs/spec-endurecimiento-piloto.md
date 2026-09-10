@@ -624,8 +624,43 @@ Las 10 de §1.2, más `whatsapp/config` (ver abajo). Asignación aplicada: `what
 
 *Nota sobre los tests existentes:* el doble de `Response` que usaban exponía solo `ok`, `status`, `headers.get` y `arrayBuffer`. Servía mientras la función leía el cuerpo entero y dejó de modelar la realidad en cuanto pasó a streaming — un doble sin `body` no puede mostrar si la lectura está acotada. Se sustituye por un `Response` real. El guard SSRF se deja abierto en ese archivo (resuelve DNS de verdad) y se ejercita real en el archivo de seguridad: un archivo por pregunta.
 
-**P0-SEC-05 — Revocar EXECUTE a PUBLIC** *(migración 052, ver §7)*
-*Aceptación:* con la clave `anon`, `POST /rest/v1/rpc/claim_ai_reply_slot` devuelve 401/403; ídem `touch_presence` y `record_webhook_failure` desde `anon`; el bot de auto-respuesta (service_role) y la presencia autenticada siguen funcionando; una consulta a `pg_proc` no devuelve ninguna función `SECURITY DEFINER` con `EXECUTE` para `PUBLIC`.
+**P0-SEC-05 — Revocar EXECUTE a PUBLIC** — ✅ **COMPLETADA** (2026-09-09)
+`supabase/migrations/052_revoke_public_execute.sql`, `supabase/seed.sql`, `docs/deploy/revoke-public-execute.sql`, `docs/deploy/check-applied.sql`, `src/lib/auth/function-grants.test.ts`.
+*Aceptación:* con la clave `anon`, `POST /rest/v1/rpc/claim_ai_reply_slot` devuelve 401/403; ídem `touch_presence` y `record_webhook_failure`; el bot de auto-respuesta (service_role) y la presencia autenticada siguen funcionando; una consulta a `pg_proc` no devuelve ninguna función `SECURITY DEFINER` con `EXECUTE` para `PUBLIC`.
+
+*La vulnerabilidad, medida antes de tocar nada.* No era teórica ni requería sesión. Con solo la clave `anon` —la que viaja dentro del bundle del navegador y es pública por diseño—:
+
+```
+POST /rest/v1/rpc/record_webhook_failure {"endpoint_id":"<uuid>","max_failures":1}
+→ HTTP 204   ·   ese endpoint pasa de is_active=true a false
+```
+
+Cualquiera desactivaba el webhook de cualquier inquilino con una petición. `claim_ai_reply_slot` es del mismo tipo —agota el presupuesto de auto-respuesta de una conversación ajena— y su identificador es justo el que **P0-BUG-04 acaba de poner en la URL** (`/inbox/<conversationId>`): basta un enlace compartido o una captura.
+
+*Tres correcciones al plan, todas comprobadas contra el catálogo y no supuestas:*
+
+1. **Son once funciones, no cinco.** La tarea nombraba `claim_ai_reply_slot`, `touch_presence`, `record_webhook_failure`, `process_due_tasks` e `is_account_member`. `pg_proc` añade `_bcast_bump`, `broadcast_recipient_aggregate_trigger`, `handle_new_user`, `notify_conversation_assigned`, `notify_deal_assigned` y `recompute_broadcast_counts`.
+2. **Revocar solo a `PUBLIC` no habría bastado.** `pg_default_acl` concede `EXECUTE` **directamente** a `anon` y `authenticated` sobre toda función nueva del esquema, y una concesión directa sobrevive a `REVOKE ... FROM PUBLIC`. El criterio de aceptación («con la clave anon devuelve 401») habría seguido fallando con el plan tal como estaba escrito. Se revoca a los tres y se concede nominalmente.
+3. **La causa raíz estaba en el seed, no en las migraciones.** `supabase/seed.sql` ejecutaba `GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role` **después** de las migraciones, borrando cada `REVOKE` que estas escribían. Su propio comentario lo justificaba con «RLS sigue aplicando, esto no debilita ninguna política»: cierto para tablas, **falso para `SECURITY DEFINER`**, que se salta RLS por definición. El daño real no era el permiso local sino la **pérdida de fidelidad**: dejaba la base de desarrollo más permisiva que producción, de modo que ninguna prueba local podía detectar un fallo de permisos de este tipo — que es exactamente lo que pasó.
+
+*Decisión deliberada, documentada en la migración:* `is_account_member` **conserva** `EXECUTE` para `anon`. 120 políticas RLS lo invocan con rol `{public}`, aplicable a cualquier rol; sin la concesión, una consulta anónima contra esas tablas dejaría de devolver cero filas y pasaría a fallar con «permission denied for function». Y no se gana nada: es un predicado puro que devuelve `false` sin sesión, no dice si la cuenta existe ni quién la compone, así que no sirve de oráculo. Se revoca `PUBLIC` —que es lo que pide la tarea— y se conceden los roles reales de forma explícita. La otra excepción es `peek_invitation`, que por diseño corre antes de que exista sesión.
+
+*Sobre los triggers:* Postgres comprueba `EXECUTE` al **crear** el trigger, no al dispararlo, y PostgREST no expone funciones que devuelven `trigger`. Eso se verificó ejercitándolos, no razonando sobre ellos: los cuatro (`handle_new_user`, `broadcast_recipient_aggregate_trigger` —que además llama a `_bcast_bump`, revocada—, `notify_conversation_assigned`, `notify_deal_assigned`) siguen disparando correctamente tras la revocación.
+
+*Resultado medido.* Tras un `supabase db reset` completo (migraciones + seed corregido desde cero):
+
+| Comprobación | Antes | Después |
+|---|---|---|
+| `SECURITY DEFINER` con EXECUTE a PUBLIC | 11 | **0** |
+| Alcanzables por `anon` | 23 | **2** (`is_account_member`, `peek_invitation`, ambas justificadas) |
+| `record_webhook_failure` anónimo | 204, endpoint desactivado | **401**, `is_active` intacto |
+| `claim_ai_reply_slot` / `process_due_tasks` / `touch_presence` anónimos | 200 / 200 / 401 | **401 / 401 / 401** |
+| `touch_presence`, `process_due_tasks`, `is_account_member` con JWT `authenticated` | OK | **OK** (204 / 200 / 200) |
+| `claim_ai_reply_slot`, `record_webhook_failure` con JWT `service_role` | OK | **OK** (200 / 204) |
+
+**Verificado que el test de CI detecta el bug:** sin la 052 falla y nombra exactamente las mismas once funciones que había encontrado la consulta al catálogo — dos métodos independientes (análisis estático del SQL y `pg_proc` en vivo) llegando a la misma lista. El bundle de despliegue se ejecutó dos veces seguidas para confirmar idempotencia. `typecheck` 0, `lint` 0 errores / 41 warnings (línea base), **102 archivos / 974 tests**, `build` 98 rutas, **E2E 54/54** contra la base ya revocada.
+
+*Dos correcciones a mi propio test, encontradas al escribirlo:* leía solo hasta el `$$` de apertura y se dejaba fuera las cinco funciones que declaran `SECURITY DEFINER` **después** del cuerpo —entre ellas `record_webhook_failure`, la que motivó todo esto—, y se leía a sí mismo, contando como concesión real un `GRANT ALL ON ALL FUNCTIONS` citado dentro de un comentario explicativo.
 
 **P0-SEC-06 — Verificar la 034 en producción y automatizar el chequeo**
 `docs/deploy/check-applied.sql`
@@ -709,9 +744,9 @@ Supabase MFA (TOTP). `withRoute` acepta `reauth: true`.
 
 Numeración a partir de la 051 (última existente). Toda migración: idempotente, con bloque de verificación, y con su bundle equivalente en `docs/deploy/`.
 
-**052 — `revoke_public_execute.sql`** *(P0-SEC-05)*
-`REVOKE ALL ON FUNCTION ... FROM PUBLIC, anon` sobre `claim_ai_reply_slot(uuid,integer)`, `touch_presence(...)`, `record_webhook_failure(...)`, `process_due_tasks()`, `is_account_member(UUID, account_role_enum)`, más los `GRANT` mínimos necesarios (`service_role` para las de backend, `authenticated` para presencia y `is_account_member`). Seguir el patrón exacto de `050_calls.sql:110-111`. Incluir consulta de verificación sobre `pg_proc`/`information_schema.routine_privileges` que liste cualquier `SECURITY DEFINER` con EXECUTE a PUBLIC (debe devolver cero filas).
-**Riesgo:** revocar de más rompe el bot de auto-respuesta y la presencia. Verificar ambos flujos en staging antes de producción.
+**052 — `revoke_public_execute.sql`** *(P0-SEC-05)* — ✅ **APLICADA**
+Cubre las **23** funciones `SECURITY DEFINER` del esquema, no las cinco que listaba el plan: revoca `PUBLIC`/`anon`/`authenticated` y concede nominalmente el único rol que llama a cada una. Bundle en `docs/deploy/revoke-public-execute.sql`; `check-applied.sql` incorpora la consulta de aceptación sobre `pg_proc` (la única fila del script que comprueba una **ausencia**, y `MISSING` ahí significa «ese proyecto está expuesto ahora mismo»). `full-install.sql` regenerado para que una instalación nueva no nazca vulnerable.
+**Riesgo R2 cerrado:** ambos flujos verificados con JWT reales — auto-respuesta y `record_webhook_failure` con `service_role`, presencia y tareas con `authenticated`. Los cuatro triggers `SECURITY DEFINER` se ejercitaron uno a uno tras la revocación.
 
 **053 — `job_queue.sql`** *(P1-QUEUE-01)*
 Tabla con `id`, `account_id`, `type`, `payload jsonb`, `status` (`pending|running|done|failed|dead`), `attempts`, `max_attempts`, `run_at`, `locked_until`, `locked_by`, `idempotency_key`, `last_error`, `created_at`, `updated_at`. Índice parcial único sobre `idempotency_key WHERE idempotency_key IS NOT NULL`. Índice de claim sobre `(status, run_at)` filtrado a `pending`. RLS: lectura para miembros de la cuenta; escritura solo `service_role`.
@@ -816,7 +851,7 @@ Ante una incidencia en un módulo, la primera acción es **apagar ese módulo po
 | # | Riesgo | Prob. | Impacto | Mitigación |
 |---|---|---|---|---|
 | R1 | Next 16.2.6 → 16.3.3 introduce rupturas no documentadas en el conocimiento previo | Alta | Alto | `AGENTS.md` es explícito: leer `node_modules/next/dist/docs/` antes de tocar routing/middleware. Actualizar aislado en su propio PR, con la suite completa |
-| R2 | La 052 revoca de más y rompe auto-respuesta o presencia | Media | Alto | Verificar ambos flujos en staging; la migración es reversible con un `GRANT` |
+| R2 | ~~La 052 revoca de más y rompe auto-respuesta o presencia~~ **Cerrado** | — | — | Verificado con JWT reales de `service_role` y `authenticated`: los cinco RPC legítimos y los cuatro triggers siguen funcionando. E2E 54/54 contra la base revocada. |
 | R3 | Pasar `chat-media` a privado rompe el fetch de Meta | **Alta** | Alto | **Decisión abierta D-3.** Prototipar antes de comprometer la 054 |
 | R4 | El estado del bug no se reproduce en staging y P0-BUG-01 no captura nada | Media | Medio | Las correcciones A/C/D son deterministas y valen por sí solas; solo B depende del diagnóstico, y su fix (confirmar antes de actuar) es correcto en cualquier caso |
 | R5 | El re-cifrado de claves deja secretos ilegibles | Baja | **Crítico** | La clave antigua permanece en el keyset; job reversible; ensayar en staging con datos reales copiados |

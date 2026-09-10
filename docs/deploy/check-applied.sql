@@ -158,6 +158,33 @@ WITH checks AS (
       AND EXISTS (SELECT 1 FROM information_schema.columns
                   WHERE table_name = 'accounts' AND column_name = 'mode'),
     'docs/deploy/account-appearance.sql'
+  UNION ALL
+  SELECT
+    -- 052 is the only row here that checks an ABSENCE, and it is the
+    -- one worth reading twice.
+    --
+    -- Postgres grants EXECUTE to PUBLIC on every function it creates,
+    -- with nobody writing a line. A SECURITY DEFINER function bypasses
+    -- RLS by design. Together that means any such function nobody
+    -- revoked by hand is an RLS-bypassing write reachable with the
+    -- `anon` key -- the one that ships inside the browser bundle.
+    --
+    -- Measured before the fix: a single anonymous POST to
+    -- rpc/record_webhook_failure flipped another tenant's webhook
+    -- endpoint from is_active=true to false.
+    --
+    -- MISSING here is not cosmetic drift. It means that project is
+    -- currently exposed.
+    '052 revoke EXECUTE from PUBLIC',
+    NOT EXISTS (
+      SELECT 1
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.prosecdef
+        AND has_function_privilege('public', p.oid, 'EXECUTE')
+    ),
+    'docs/deploy/revoke-public-execute.sql'
 )
 SELECT
   release,

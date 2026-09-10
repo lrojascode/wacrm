@@ -23,19 +23,42 @@ GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
 
 -- Anything created later in this session inherits the same grants.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT ALL ON TABLES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
 
 -- RLS still applies to anon/authenticated; only service_role bypasses
 -- it. These grants restore the table-level privileges RLS builds on,
 -- they do not weaken any policy.
+--
+-- NO FUNCTIONS HERE, AND ESO ES EL ARREGLO (P0-SEC-05)
+--
+-- Hasta la migración 052 este bloque incluía además:
+--
+--   GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, ...;
+--   ALTER DEFAULT PRIVILEGES ... GRANT ALL ON FUNCTIONS TO anon, ...;
+--
+-- El argumento de arriba —«RLS sigue aplicando, esto no debilita
+-- ninguna política»— es cierto para TABLAS y falso para funciones
+-- SECURITY DEFINER, que se saltan RLS por definición: es para lo que
+-- existen. Aquel GRANT le entregaba a `anon` todas las funciones que
+-- ignoran RLS del esquema, y además borraba cada REVOKE que las
+-- migraciones habían escrito, porque el seed corre después.
+--
+-- El daño no era solo local. Dejaba la base de desarrollo MÁS
+-- permisiva que producción, así que ninguna prueba local podía
+-- detectar un fallo de permisos de este tipo — que es exactamente lo
+-- que pasó: once funciones llevaban tiempo abiertas a `anon` y el
+-- entorno donde se probaba no podía enseñarlo.
+--
+-- Las funciones ya no necesitan nada aquí: cada migración concede
+-- explícitamente el rol que la llama (service_role o authenticated) y
+-- la 052 revoca el resto. Si al añadir una función nueva algo falla
+-- con «permission denied for function», la respuesta es un GRANT
+-- nominal en su propia migración, nunca reabrir este atajo.
 
 -- ============================================================
 -- 2. DEV FIXTURE
