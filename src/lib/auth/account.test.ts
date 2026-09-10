@@ -19,7 +19,10 @@ interface BuilderCall {
 }
 
 function makeClient(opts: {
-  user: { id: string } | null;
+  // `email_confirmed_at` es parte del usuario desde P0-SEC-08:
+  // getCurrentAccount rechaza a quien no lo tenga, así que omitirlo
+  // aquí describiría a alguien a quien la app no dejaría entrar.
+  user: { id: string; email_confirmed_at?: string | null } | null;
   userErr?: unknown;
   byTable: Record<string, { data: unknown; error: unknown }>;
 }) {
@@ -77,7 +80,7 @@ afterEach(() => {
 describe("getCurrentAccount", () => {
   it("resolves context via a plain accounts lookup, not an embedded join", async () => {
     const { client, calls } = makeClient({
-      user: { id: "user-1" },
+      user: { id: "user-1", email_confirmed_at: "2026-01-01T00:00:00Z" },
       byTable: {
         profiles: {
           data: { account_id: "acct-1", account_role: "owner" },
@@ -114,7 +117,7 @@ describe("getCurrentAccount", () => {
 
   it("maps a profiles query error to 'Could not load account context'", async () => {
     const { client } = makeClient({
-      user: { id: "user-1" },
+      user: { id: "user-1", email_confirmed_at: "2026-01-01T00:00:00Z" },
       byTable: {
         profiles: { data: null, error: { code: "PGRST200" } },
       },
@@ -129,7 +132,7 @@ describe("getCurrentAccount", () => {
     // The exact #294 shape if the embed were still in play, but now on
     // the decoupled accounts lookup: profile resolves, account read errors.
     const { client } = makeClient({
-      user: { id: "user-1" },
+      user: { id: "user-1", email_confirmed_at: "2026-01-01T00:00:00Z" },
       byTable: {
         profiles: {
           data: { account_id: "acct-1", account_role: "admin" },
@@ -146,7 +149,7 @@ describe("getCurrentAccount", () => {
 
   it("rejects a profile not linked to an account", async () => {
     const { client } = makeClient({
-      user: { id: "user-1" },
+      user: { id: "user-1", email_confirmed_at: "2026-01-01T00:00:00Z" },
       byTable: {
         profiles: { data: { account_id: null, account_role: null }, error: null },
       },
@@ -159,7 +162,7 @@ describe("getCurrentAccount", () => {
 
   it("rejects an account_id that resolves to no readable account", async () => {
     const { client } = makeClient({
-      user: { id: "user-1" },
+      user: { id: "user-1", email_confirmed_at: "2026-01-01T00:00:00Z" },
       byTable: {
         profiles: {
           data: { account_id: "acct-1", account_role: "viewer" },
@@ -172,5 +175,37 @@ describe("getCurrentAccount", () => {
     await expect(getCurrentAccount()).rejects.toThrow(
       "Profile is not linked to an account",
     );
+  });
+});
+
+describe("getCurrentAccount — correo sin verificar (P0-SEC-08)", () => {
+  it("rechaza a quien no ha verificado su dirección", async () => {
+    const { client } = makeClient({
+      user: { id: "user-1", email_confirmed_at: null },
+      byTable: {
+        profiles: { data: { account_id: "acct-1", account_role: "owner" }, error: null },
+        accounts: { data: { id: "acct-1", name: "Acme" }, error: null },
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(getCurrentAccount()).rejects.toMatchObject({
+      name: "EmailNotVerifiedError",
+      status: 403,
+      code: "email_not_verified",
+    });
+  });
+
+  it("corta antes de leer el perfil", async () => {
+    // Comprobarlo después sería trabajo tirado en cada petición de un
+    // usuario sin verificar, y dos consultas más de superficie.
+    const { client, calls } = makeClient({
+      user: { id: "user-1", email_confirmed_at: null },
+      byTable: {},
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(getCurrentAccount()).rejects.toThrow();
+    expect(calls).toHaveLength(0);
   });
 });

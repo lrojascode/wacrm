@@ -196,7 +196,24 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = true
+#
+# FALSE ON PURPOSE (P0-SEC-08). `signUp()` runs in the browser and
+# talks to Supabase directly, so nothing in the Next app can gate it:
+# the anon key ships inside the JS bundle. Measured with this set to
+# `true`, one anonymous POST to /auth/v1/signup returned an access
+# token AND made the caller `owner` of a brand-new tenant.
+#
+# This switch blocks POST /signup (422 signup_disabled) and nothing
+# else: GoTrue's admin endpoints are explicitly exempt, which is what
+# keeps both remaining paths working —
+#   - POST /api/invitations/<token>/claim  (invited user, admin API)
+#   - POST /api/account/members            (owner adds a teammate)
+#
+# Production is not configured from this file. Set the same thing in
+# each client project: Authentication -> Sign In / Providers ->
+# "Allow new users to sign up" OFF. docs/deploy/coolify.md carries the
+# check that proves it.
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -241,6 +258,17 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
+#
+# LEAVE THIS TRUE. Setting it to false does NOT mean "email signup
+# off" — it turns the whole email provider off, and existing users can
+# no longer SIGN IN either ("Email logins are disabled",
+# email_provider_disabled). Found the hard way: the invited-user E2E
+# got that error at the login step while the signup block worked fine.
+#
+# `[auth].enable_signup = false` above is the one that closes public
+# registration, and it is sufficient on its own — verified: an
+# anonymous POST to /auth/v1/signup returns 422 signup_disabled with
+# this left true.
 enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.

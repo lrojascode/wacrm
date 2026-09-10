@@ -104,6 +104,18 @@ function LoginPageInner() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            {/* El proxy manda aquí con ?verify=1 a quien tiene sesión
+                pero no ha verificado su correo (P0-SEC-08). Sin este
+                aviso aterrizaría en el login sin saber por qué le
+                echaron del dashboard. */}
+            {searchParams.get("verify") === "1" && !error && (
+              <div
+                data-testid="login-verify-notice"
+                className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-500"
+              >
+                {t("verifyEmailNotice")}
+              </div>
+            )}
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
                 {error}
@@ -157,19 +169,24 @@ function LoginPageInner() {
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {t('noAccount')}{" "}
-            <Link
-              href={
-                inviteToken
-                  ? `/signup?invite=${encodeURIComponent(inviteToken)}`
-                  : "/signup"
-              }
-              className="text-primary hover:text-primary/80"
-            >
-              {t('createAccount')}
-            </Link>
-          </p>
+          {/* Sin invitación no hay alta que ofrecer (P0-SEC-08), así
+              que enlazar a /signup sería mandar a alguien a una puerta
+              cerrada. Se dice la política en su lugar. */}
+          {inviteToken ? (
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              {t('noAccount')}{" "}
+              <Link
+                href={`/signup?invite=${encodeURIComponent(inviteToken)}`}
+                className="text-primary hover:text-primary/80"
+              >
+                {t('createAccount')}
+              </Link>
+            </p>
+          ) : (
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              {t('inviteOnlyNote')}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

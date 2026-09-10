@@ -701,10 +701,32 @@ La 034 hace lo que promete. Los dos últimos son contrapesos deliberados: un tri
 Nueva tabla `schema_release` + bloque de registro al final de cada bundle de `docs/deploy/`.
 *Aceptación:* cada bundle registra su versión al aplicarse; `check-applied.sql` la lee; aplicar dos veces el mismo bundle es idempotente y no duplica filas.
 
-**P0-SEC-08 — Cerrar el alta pública**
-`src/app/(auth)/signup/page.tsx`, `src/proxy.ts:53`
-Signup solo por invitación; email verificado obligatorio antes de la primera sesión útil.
-*Aceptación:* `/signup` sin token de invitación válido no crea cuenta; el flujo de invitación existente (`/join/[token]`) sigue funcionando de extremo a extremo; un usuario sin email verificado no accede al dashboard.
+**P0-SEC-08 — Cerrar el alta pública** — ✅ **COMPLETADA** (2026-09-10)
+`supabase/config.toml`, `src/app/api/invitations/[token]/claim/route.ts`, `src/app/(auth)/signup/page.tsx`, `src/app/(auth)/login/page.tsx`, `src/lib/auth/account.ts`, `src/proxy.ts`, `e2e/invitation-only.spec.ts`.
+*Aceptación:* `/signup` sin token de invitación válido no crea cuenta; `/join/[token]` sigue funcionando de extremo a extremo; un usuario sin email verificado no accede al dashboard.
+
+*La vulnerabilidad, medida antes de tocar nada.* Un solo POST anónimo, con la clave `anon` que viaja dentro del bundle del navegador:
+
+```
+POST /auth/v1/signup {"email":"…","password":"…"}
+→ HTTP 200 con access_token, y el llamante queda como OWNER de un inquilino nuevo
+```
+
+Sin invitación, sin verificar nada, sesión utilizable al instante.
+
+*La corrección de fondo al planteamiento.* La tarea apuntaba a `signup/page.tsx` y al proxy. **Ninguno de los dos podía cerrarlo:** `signUp()` va del navegador a Supabase directamente, así que cualquier control en esta app es decorativo — exactamente el mismo error de categoría que «esconder un botón no es autorización» de P0-SEC-02. El único control real es `enable_signup = false` en el proyecto Supabase. Eso reordena la tarea: el trabajo en código no es *bloquear* el alta, es **sustituirla**, porque ese interruptor también deja fuera a los invitados.
+
+*Lo que sustituye al alta pública.* `POST /api/invitations/[token]/claim`: valida la invitación con el mismo `peek_invitation` que ya usa `/join`, y solo entonces crea el usuario con la API de administración — exenta del interruptor, según la documentación de GoTrue («block all signups (invites still work)»), verificado además contra el stack local. No canjea: unirse a la cuenta sigue siendo trabajo de `redeem_invitation`, así que la pertenencia conserva una sola fuente de verdad y el orden de los pasos es idéntico al de antes.
+
+> **⚠️ Trampa encontrada, y es de las que cuestan una tarde.** Hay dos interruptores parecidos. `[auth].enable_signup = false` es el correcto. `[auth.email].enable_signup = false` **no** significa «alta por correo desactivada»: apaga el proveedor entero y **quien ya tiene cuenta deja de poder iniciar sesión** (`email_provider_disabled`). Lo descubrí porque el E2E del invitado falló en el paso del login con «Email logins are disabled» mientras el bloqueo del alta funcionaba perfectamente. Corregido en `config.toml` con la explicación al lado, y documentado en `coolify.md`. Verificado que el interruptor de arriba basta por sí solo.
+
+*Verificación del correo.* El control vive en `getCurrentAccount`, no solo en el proxy. La guía de Next es explícita en que el proxy no debe ser la capa de autorización, y quien llame a la API directamente no pasa por él; `getCurrentAccount` sí es el cuello de botella real desde P0-SEC-01/02 — las 71 rutas lo atraviesan. El proxy conserva un redirect *optimista* a `/login?verify=1` para que la persona aterrice donde se le explica, en vez de en un dashboard que devuelve 403 a todo. **No bloquea a nadie existente:** con `enable_confirmations = false` GoTrue autoconfirma, comprobado contra la base — toda cuenta creada hasta hoy tiene `email_confirmed_at`.
+
+*Resultado medido:* `typecheck` 0, `lint` 0 errores / 41 warnings (línea base), **103 archivos / 996 tests**, `build` 98 rutas, **E2E 72/72** (4 saltados por diseño; 64 → 72). Contra el stack local: alta anónima **422 `signup_disabled`** y cero filas creadas; `admin/users` sigue devolviendo 200; login de un usuario existente 200 con token; y el recorrido completo invitación → cuenta → login → aceptar → inbox termina con el perfil en la cuenta y el rol correctos.
+
+*Tres correcciones a mis propios tests por el camino:* el límite por token que había añadido (5/min, para que quien tenga un enlace válido no acuñe cuentas en serie) hacía fallar con 429 a mi propia suite, que reusaba un token — aislado con uno por caso, y el límite se prueba ahora en un test propio. Y tres archivos de test existentes fallaron porque sus dobles de `getUser` no devolvían `email_confirmed_at`: eran dobles que describían a un usuario que la app ya no aceptaría, así que se corrigieron los dobles, no el control.
+
+*Anotado, no perseguido:* durante el alta del invitado la consola registra `[PresenceHeartbeat] touch_presence failed: No account for caller`. Es un estado transitorio entre crear la cuenta y canjear la invitación; no rompe el flujo y es anterior a este cambio.
 
 **P0-SEC-09 — MFA para owner/admin y reautenticación en acciones críticas**
 Supabase MFA (TOTP). `withRoute` acepta `reauth: true`.

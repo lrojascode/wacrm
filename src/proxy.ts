@@ -114,6 +114,30 @@ export async function proxy(request: NextRequest) {
 
   // Protected pages - redirect to login if not authenticated
   const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings']
+
+  // Signed in, but the address was never verified (P0-SEC-08).
+  //
+  // This is an OPTIMISTIC check, in the sense Next's own auth guide
+  // uses: it exists so the person lands somewhere that explains the
+  // problem instead of on a dashboard that 403s every request. The
+  // enforcement is `getCurrentAccount` (src/lib/auth/account.ts),
+  // which every API route reaches through requireRole/withRoute —
+  // the docs are explicit that the proxy must not be the authorisation
+  // layer, and anyone calling the API directly never passes here.
+  //
+  // Free to evaluate: `user` is already loaded above for the session
+  // check, so this adds no round trip.
+  if (
+    user &&
+    !user.email_confirmed_at &&
+    protectedPaths.some((path) => request.nextUrl.pathname.startsWith(path))
+  ) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    url.search = '?verify=1'
+    return withRefreshedCookies(NextResponse.redirect(url))
+  }
+
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

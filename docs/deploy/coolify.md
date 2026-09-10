@@ -145,6 +145,62 @@ se hace owner. Para antes de desplegar.
 
 ---
 
+## 3.bis Cerrar el alta pública — ajuste de proyecto, no SQL
+
+**Esto no se arregla con SQL ni con un deploy.** `signUp()` va del
+navegador a Supabase directamente, y la clave `anon` viaja dentro del
+bundle de JavaScript: cualquier gate en la app es decorativo. Medido
+antes del cambio, un solo POST anónimo a `/auth/v1/signup` devolvía un
+access token **y** dejaba a quien llamara como `owner` de un inquilino
+nuevo.
+
+En **cada proyecto de cliente**: Authentication → Sign In / Providers →
+**"Allow new users to sign up": OFF**.
+
+> ### ⚠️ El error que cuesta una tarde
+>
+> Hay **dos** interruptores parecidos y solo uno es el correcto.
+>
+> | Ajuste | Qué hace |
+> |---|---|
+> | **Allow new users to sign up** (general) | ✅ El que buscas. Bloquea `POST /signup` con `422 signup_disabled` y **nada más**. |
+> | **Email provider → enabled** | ❌ **No lo toques.** Apagarlo no desactiva "el alta por correo": desactiva el proveedor entero, y **quien ya tiene cuenta deja de poder iniciar sesión** (`Email logins are disabled`). |
+>
+> Lo descubrí apagando el segundo: el bloqueo del alta funcionaba
+> perfectamente y el login de un usuario existente devolvía
+> `email_provider_disabled`. Desde fuera parece que el deploy rompió el
+> acceso de todo el mundo.
+
+**Las dos vías legítimas siguen funcionando**, porque los endpoints de
+administración de GoTrue están exentos de este interruptor:
+
+- `POST /api/invitations/<token>/claim` — el invitado crea su cuenta
+  desde el enlace (nuevo en esta tanda).
+- `POST /api/account/members` — el owner añade a alguien a mano.
+
+### Comprobarlo
+
+```bash
+curl -i -X POST "https://<ref>.supabase.co/auth/v1/signup" \
+  -H "apikey: <ANON_KEY>" -H "Content-Type: application/json" \
+  -d '{"email":"prueba-alta@ejemplo.test","password":"unaClaveLarga123"}'
+```
+
+Debe devolver **422** con `"error_code":"signup_disabled"`. Si devuelve
+200, ese proyecto sigue aceptando registros de cualquiera.
+
+Y confirma que **no** rompiste el login, que es la otra mitad:
+
+```bash
+curl -i -X POST "https://<ref>.supabase.co/auth/v1/token?grant_type=password" \
+  -H "apikey: <ANON_KEY>" -H "Content-Type: application/json" \
+  -d '{"email":"<un usuario real>","password":"<su contraseña>"}'
+```
+
+Debe devolver **200** con un `access_token`.
+
+---
+
 ## 4. Redeploy en Coolify
 
 Solo cuando el paso 3 esté limpio:
@@ -167,6 +223,8 @@ antes, se va a notar el mismo día del deploy.
 | **Un `viewer` ya no puede enviar mensajes ni reaccionar.** Es lo que fija la política de roles (*viewer: lectura; agent: operación*), pero antes la comprobación simplemente no existía en diez rutas. | Cualquier cuenta donde alguien con rol `viewer` esté operando de hecho. Conviene revisar los roles reales antes del deploy. |
 | **La imagen de cabecera de una plantilla debe ser `https://` y pública.** Direcciones privadas, `localhost` e internas se rechazan, y la descarga se corta a 5 MB. | Un montaje con Supabase autoalojado en red privada: la URL del bucket sería interna y quedaría rechazada. No afecta a Supabase gestionado. |
 | **Las URLs del inbox llevan ahora el id de conversación** (`/inbox/<id>`). Los enlaces antiguos `?c=<id>` siguen funcionando con un 308. | Nadie, pero explica por qué la 052 importa más que antes: ese id ahora viaja en enlaces y capturas. |
+| **`/signup` ya no registra a nadie sin invitación.** La página lo dice en lugar de mostrar un formulario que fallaría al enviar, y `/login` deja de ofrecer "Crear cuenta" cuando no hay invitación de por medio. | Cualquiera que enviara el enlace de `/signup` a un compañero: ahora hay que mandarle una invitación desde Configuración → Miembros. |
+| **Quien no tenga el correo verificado no entra al dashboard.** | Nadie hoy: con `enable_confirmations = false` GoTrue autoconfirma, así que toda cuenta existente ya lo tiene. Comprobado contra la base antes de añadir el control. Importa el día que actives las confirmaciones. |
 
 ---
 

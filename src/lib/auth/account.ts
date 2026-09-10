@@ -55,6 +55,24 @@ export class ForbiddenError extends Error {
 }
 
 /**
+ * The caller is signed in but has never proved they control the
+ * address they signed up with (P0-SEC-08).
+ *
+ * A subclass of ForbiddenError so every existing `catch` keeps
+ * mapping it to 403, but it carries a machine-readable `code` so the
+ * UI can say "check your inbox" instead of the generic "forbidden",
+ * which would send someone hunting for a permissions problem they do
+ * not have.
+ */
+export class EmailNotVerifiedError extends ForbiddenError {
+  readonly code = "email_not_verified" as const;
+  constructor() {
+    super("Verify your email address before using the app");
+    this.name = "EmailNotVerifiedError";
+  }
+}
+
+/**
  * Convert one of the typed errors above (or anything else) into a
  * `NextResponse`. Routes can do:
  *
@@ -67,6 +85,12 @@ export class ForbiddenError extends Error {
  * server internals out of the wire.
  */
 export function toErrorResponse(err: unknown): NextResponse {
+  if (err instanceof EmailNotVerifiedError) {
+    return NextResponse.json(
+      { error: err.message, code: err.code },
+      { status: err.status },
+    );
+  }
   if (err instanceof UnauthorizedError || err instanceof ForbiddenError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
@@ -112,6 +136,26 @@ export async function getCurrentAccount(): Promise<AccountContext> {
   } = await supabase.auth.getUser();
   if (userErr || !user) {
     throw new UnauthorizedError();
+  }
+
+  // Email verificado antes de cualquier uso real de la app
+  // (P0-SEC-08).
+  //
+  // Va aquí y no solo en el proxy porque el proxy protege PÁGINAS, y
+  // la documentación de Next es explícita en que no debe ser la
+  // solución de autorización: quien llame a la API directamente no
+  // pasa por él. Esta función sí es el cuello de botella real — las 71
+  // rutas la atraviesan vía requireRole/withRoute (P0-SEC-01/02), así
+  // que el control se aplica una vez y vale para todas.
+  //
+  // No bloquea a nadie que ya exista: con `enable_confirmations = false`
+  // GoTrue autoconfirma, así que toda cuenta creada hasta hoy tiene
+  // `email_confirmed_at` puesto — verificado contra la base antes de
+  // añadir esto. El control existe para el día en que se activen las
+  // confirmaciones, y para cualquier usuario creado por una vía que no
+  // marque el correo como verificado.
+  if (!user.email_confirmed_at) {
+    throw new EmailNotVerifiedError();
   }
 
   const { data, error } = await supabase

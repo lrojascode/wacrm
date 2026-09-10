@@ -12,7 +12,9 @@
     "signingIn": "Signing in...",
     "signIn": "Sign in",
     "noAccount": "Don't have an account?",
-    "createAccount": "Create account"
+    "createAccount": "Create account",
+    "verifyEmailNotice": "Verify your email address before signing in. Check your inbox.",
+    "inviteOnlyNote": "Access is by invitation only. Ask your account administrator for a link."
   },
   "ForgotPasswordPage": {
     "title": "Reset password",
@@ -46,7 +48,13 @@
     "sentDesc": "We've sent a confirmation link to <bold>{email}</bold>. Please check your inbox and click the link to verify your account.",
     "backToSignIn": "Back to sign in",
     "errorPasswordMismatch": "Passwords do not match",
-    "errorPasswordShort": "Password must be at least 6 characters"
+    "errorPasswordShort": "Password must be at least 6 characters",
+    "inviteOnlyTitle": "By invitation only",
+    "inviteOnlyDesc": "This platform does not allow open registration. Ask whoever administers your account to send you an invitation link.",
+    "errorPasswordShort8": "Password must be at least 8 characters",
+    "createdTitle": "Account created",
+    "createdDesc": "You can sign in now and accept the invitation.",
+    "goToSignIn": "Go to sign in"
   },
   "JoinPage": {
     "verifying": "Verifying invitation…",

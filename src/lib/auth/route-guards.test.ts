@@ -49,6 +49,8 @@ const UNAUTHENTICATED_BY_DESIGN: Record<string, string> = {
   // Invitation acceptance happens before the invitee has an account.
   "invitations/[token]/peek/route.ts": "Pre-session: reads an invitation by token",
   "invitations/[token]/redeem/route.ts": "Pre-session: redeems an invitation by token",
+  "invitations/[token]/claim/route.ts":
+    "Pre-session: creates the invited user; authenticated by the invitation token itself (P0-SEC-08)",
 
   // Scheduled work, authenticated by a shared secret header.
   "automations/cron/route.ts": "Cron — x-cron-secret header",

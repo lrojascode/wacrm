@@ -136,6 +136,19 @@ export const RATE_LIMITS = {
    *  case of tripping it is an inflated click counter, not a security
    *  issue, so it's generous. */
   trackedLinkRedirect: { limit: 60, windowMs: 60_000 },
+  /** Invitation claim — creating an account from an invite token
+   *  (public, per-IP AND per-token). This is the only remaining way
+   *  to create a user without an admin doing it, now that public
+   *  signup is closed (P0-SEC-08), so it is the tightest bucket here.
+   *
+   *  Per-token matters as much as per-IP: an invitation is a bearer
+   *  secret and is NOT bound to an email address, so whoever holds a
+   *  valid link chooses the address. Only one of the accounts they
+   *  create can actually redeem the invite (redeem_invitation marks it
+   *  used), but without this bound the rest would still pile up as
+   *  orphan personal accounts. 5/min is well above the one attempt a
+   *  real invitee makes, including a couple of validation retries. */
+  invitationClaim: { limit: 5, windowMs: 60_000 },
   /** Invitation redeem (authed, per-IP+user). Tighter than peek —
    *  successful redemption mutates two profiles and an invite row, so
    *  the abuse surface is "spam join attempts." */

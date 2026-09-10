@@ -15,6 +15,8 @@ import { ACCOUNT_ROLES, type AccountRole } from "@/lib/auth/roles";
 /** What the fake database should report for the next call. */
 let currentRole: AccountRole | null = "viewer";
 let sessionMissing = false;
+/** P0-SEC-08: whether the signed-in user has a verified address. */
+let emailVerified = true;
 
 /**
  * Mock the Supabase client, not `getCurrentAccount`.
@@ -31,7 +33,15 @@ vi.mock("@/lib/supabase/server", () => ({
       getUser: async () =>
         sessionMissing
           ? { data: { user: null }, error: { message: "no session" } }
-          : { data: { user: { id: "u1" } }, error: null },
+          : {
+              data: {
+                user: {
+                  id: "u1",
+                  email_confirmed_at: emailVerified ? "2026-01-01T00:00:00Z" : null,
+                },
+              },
+              error: null,
+            },
     },
     from: (table: string) => ({
       select: () => ({
@@ -55,6 +65,7 @@ beforeEach(() => {
   handler.mockClear();
   sessionMissing = false;
   currentRole = "viewer";
+  emailVerified = true;
 });
 
 describe("withRoute — matriz de roles", () => {
@@ -138,5 +149,44 @@ describe("withRoute — casos límite", () => {
     const res = await route(request());
 
     expect(res.status).toBe(500);
+  });
+});
+
+describe("withRoute — correo sin verificar (P0-SEC-08)", () => {
+  it("un owner con el correo sin verificar no pasa", async () => {
+    // El rol más alto, para que quede claro que el control no es de
+    // rol: nadie opera sin haber probado que controla su dirección.
+    currentRole = "owner";
+    emailVerified = false;
+    const route = withRoute({ minRole: "viewer" }, handler);
+
+    const res = await route(request());
+
+    expect(res.status).toBe(403);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("dice por qué, con un código que la UI puede leer", async () => {
+    // Un 403 genérico manda a quien lo recibe a buscar un problema de
+    // permisos que no tiene.
+    emailVerified = false;
+    const route = withRoute({ minRole: "viewer" }, handler);
+
+    const body = (await (await route(request())).json()) as {
+      error: string;
+      code?: string;
+    };
+
+    expect(body.code).toBe("email_not_verified");
+  });
+
+  it("verificado, pasa con normalidad", async () => {
+    // El contrapeso: sin esto la suite pasaría igual con un guard que
+    // rechazara a todo el mundo.
+    emailVerified = true;
+    const route = withRoute({ minRole: "viewer" }, handler);
+
+    expect((await route(request())).status).toBe(200);
+    expect(handler).toHaveBeenCalledOnce();
   });
 });

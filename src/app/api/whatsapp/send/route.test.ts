@@ -122,7 +122,10 @@ function makeSupabaseMock() {
   return {
     auth: {
       getUser: vi.fn(async () => ({
-        data: { user: { id: 'user-1' } },
+        // `email_confirmed_at` desde P0-SEC-08: getCurrentAccount
+        // rechaza a quien no ha verificado su correo, así que un doble
+        // sin este campo modela a un usuario que la app no aceptaría.
+        data: { user: { id: 'user-1', email_confirmed_at: '2026-01-01T00:00:00Z' } },
         error: null,
       })),
     },

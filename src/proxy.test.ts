@@ -8,7 +8,17 @@ import { NextRequest } from "next/server";
 //                      i.e. the freshly *rotated* auth token. The whole point
 //                      of the test is that these must survive onto whatever
 //                      response the proxy returns — including redirects.
-let mockUser: { id: string } | null = null;
+// `email_confirmed_at` entra en el tipo con P0-SEC-08: el proxy
+// redirige a /login?verify=1 a quien tiene sesión pero no ha
+// verificado su correo, así que un usuario de prueba sin el campo ya
+// no representa a alguien que pueda navegar.
+type MockUser = { id: string; email_confirmed_at?: string | null };
+let mockUser: MockUser | null = null;
+/** Un usuario normal: con sesión y con el correo verificado. */
+const verifiedUser = (): MockUser => ({
+  id: "user-1",
+  email_confirmed_at: "2026-01-01T00:00:00Z",
+});
 let refreshedCookies: Array<{
   name: string;
   value: string;
@@ -55,7 +65,7 @@ const ROTATED = {
 
 describe("proxy — refreshed auth cookies survive redirects", () => {
   it("carries the rotated token when redirecting a signed-in user off /login", async () => {
-    mockUser = { id: "user-1" };
+    mockUser = verifiedUser();
     refreshedCookies = [ROTATED];
 
     const res = await proxy(
@@ -87,7 +97,7 @@ describe("proxy — refreshed auth cookies survive redirects", () => {
   });
 
   it("redirects a signed-in user with an invite token to /join/<token>", async () => {
-    mockUser = { id: "user-1" };
+    mockUser = verifiedUser();
     refreshedCookies = [ROTATED];
 
     const res = await proxy(
@@ -99,7 +109,7 @@ describe("proxy — refreshed auth cookies survive redirects", () => {
   });
 
   it("passes through (no redirect) for a signed-in user on a protected page", async () => {
-    mockUser = { id: "user-1" };
+    mockUser = verifiedUser();
     refreshedCookies = [ROTATED];
 
     const res = await proxy(
@@ -124,7 +134,7 @@ describe("proxy — refreshed auth cookies survive redirects", () => {
 
 describe("proxy — ?next= al volver de /login", () => {
   it("devuelve al usuario a la ruta pedida en vez de a /dashboard", async () => {
-    mockUser = { id: "user-1" };
+    mockUser = verifiedUser();
 
     const res = await proxy(
       new NextRequest("https://app.test/login?next=%2Finbox%3Fc%3Dabc-123"),
@@ -137,7 +147,7 @@ describe("proxy — ?next= al volver de /login", () => {
   });
 
   it("cae a /dashboard cuando no hay next", async () => {
-    mockUser = { id: "user-1" };
+    mockUser = verifiedUser();
 
     const res = await proxy(new NextRequest("https://app.test/login"));
 
@@ -152,7 +162,7 @@ describe("proxy — ?next= al volver de /login", () => {
     ["barra invertida", "%2F%5Cevil.example"],
     ["javascript:", "javascript%3Aalert(1)"],
   ])("ignora un next externo (%s) y usa /dashboard", async (_label, encoded) => {
-    mockUser = { id: "user-1" };
+    mockUser = verifiedUser();
 
     const res = await proxy(
       new NextRequest(`https://app.test/login?next=${encoded}`),
@@ -166,7 +176,7 @@ describe("proxy — ?next= al volver de /login", () => {
   });
 
   it("una invitación tiene prioridad sobre next", async () => {
-    mockUser = { id: "user-1" };
+    mockUser = verifiedUser();
 
     const res = await proxy(
       new NextRequest("https://app.test/login?invite=abc123&next=%2Finbox"),
@@ -208,7 +218,7 @@ describe("proxy — ?next= al volver de /login", () => {
 
 describe("proxy — enlaces antiguos /inbox?c=<id>", () => {
   it("redirige 308 a /inbox/<id> sin arrastrar el query", async () => {
-    mockUser = { id: "user-1" };
+    mockUser = verifiedUser();
 
     const res = await proxy(
       new NextRequest("https://app.test/inbox?c=abc-123"),
@@ -223,7 +233,7 @@ describe("proxy — enlaces antiguos /inbox?c=<id>", () => {
   });
 
   it("no redirige cuando c está vacío", async () => {
-    mockUser = { id: "user-1" };
+    mockUser = verifiedUser();
 
     const res = await proxy(new NextRequest("https://app.test/inbox?c="));
 
@@ -231,10 +241,44 @@ describe("proxy — enlaces antiguos /inbox?c=<id>", () => {
   });
 
   it("deja pasar /inbox sin parámetros", async () => {
-    mockUser = { id: "user-1" };
+    mockUser = verifiedUser();
 
     const res = await proxy(new NextRequest("https://app.test/inbox"));
 
     expect(res.headers.get("location")).toBeNull();
+  });
+});
+
+describe("proxy — correo sin verificar (P0-SEC-08)", () => {
+  it("manda a /login?verify=1 desde una página protegida", async () => {
+    mockUser = { id: "user-1", email_confirmed_at: null };
+
+    const res = await proxy(new NextRequest("https://app.test/inbox"));
+
+    expect(res.status).toBe(307);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.pathname).toBe("/login");
+    // El parámetro es lo que hace que /login explique por qué está
+    // ahí, en vez de parecer un cierre de sesión sin motivo.
+    expect(location.searchParams.get("verify")).toBe("1");
+  });
+
+  it("no molesta a quien sí lo tiene verificado", async () => {
+    mockUser = verifiedUser();
+
+    const res = await proxy(new NextRequest("https://app.test/inbox"));
+
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("deja /login accesible para no encerrar a nadie en un bucle", async () => {
+    // Si el propio destino del redirect estuviera protegido, la
+    // persona rebotaría para siempre.
+    mockUser = { id: "user-1", email_confirmed_at: null };
+
+    const res = await proxy(new NextRequest("https://app.test/login?verify=1"));
+
+    const location = res.headers.get("location");
+    expect(location === null || !location.includes("verify=1&verify=1")).toBe(true);
   });
 });
