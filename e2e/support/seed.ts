@@ -297,14 +297,33 @@ async function ensureConversations(
  * `enroll` + `challengeAndVerify` que usa la página /mfa, porque un
  * atajo por base de datos probaría un estado que la app nunca produce.
  *
- * No puede hacerse con la clave de servicio: inscribir un factor
- * requiere la sesión del propio usuario. De ahí el login por usuario.
+ * Inscribir necesita la sesión del propio usuario (la clave de servicio
+ * no vale), de ahí el login por usuario. Los secretos se guardan en un
+ * archivo que `loginAs` lee para superar el reto; nunca se versiona.
  *
- * Los secretos se guardan en un archivo que `loginAs` lee para superar
- * el reto. Nunca se versiona (.gitignore) y solo describe usuarios de
- * un stack local.
+ * LIMPIAR UN FACTOR VIEJO SÍ NECESITA LA CLAVE DE SERVICIO
+ *
+ * Si en la base hay un factor verificado del que no tenemos el secreto
+ * —el archivo se borró, o la base viene de otra pasada— ese factor es
+ * inservible: no hay forma de generar su código. Hay que retirarlo, y
+ * ahí está la trampa: **una sesión de solo contraseña (aal1) no puede
+ * ni desinscribir un factor verificado ni inscribir otro**. Supabase
+ * responde «AAL2 required to enroll a new factor», y para llegar a aal2
+ * haría falta el código que precisamente no tenemos.
+ *
+ * La primera versión intentaba `unenroll` con la sesión del usuario y
+ * se tragaba el error con un `.catch(() => {})`. El resultado era el
+ * peor posible: el fallo real quedaba oculto y saltaba tres líneas
+ * después en el `enroll`, apuntando al sitio equivocado.
+ *
+ * Se retira con la API de administración, que no exige aal2. Es la
+ * misma salida documentada en docs/deploy/coolify.md para cuando a
+ * alguien se le pierde el teléfono.
  */
-async function ensureMfaFactors(): Promise<void> {
+async function ensureMfaFactors(
+  admin: SupabaseClient,
+  userIds: Map<string, string>,
+): Promise<void> {
   const url = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
   const anonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
   const secrets: Record<string, string> = readMfaSecrets();
@@ -312,6 +331,37 @@ async function ensureMfaFactors(): Promise<void> {
   for (const fixture of USERS) {
     if (!MFA_ROLES.has(fixture.role)) continue;
 
+    const userId = userIds.get(fixture.email.toLowerCase());
+    if (!userId) throw new Error(`mfa: no hay user_id para ${fixture.email}`);
+
+    // Qué hay ya, preguntado como administrador.
+    const { data: current, error: listErr } = await admin.auth.admin.mfa.listFactors({
+      userId,
+    });
+    if (listErr) throw new Error(`mfa listFactors ${fixture.email}: ${listErr.message}`);
+
+    const factors = current?.factors ?? [];
+    const usable = factors.find(
+      (f) => f.status === "verified" && f.factor_type === "totp",
+    );
+    if (usable && secrets[fixture.email]) continue;
+
+    // Retirar lo inservible. Con la clave de servicio, porque el propio
+    // usuario no podría: sin su código no llega a aal2.
+    for (const stale of factors) {
+      const { error } = await admin.auth.admin.mfa.deleteFactor({
+        id: stale.id,
+        userId,
+      });
+      if (error) {
+        throw new Error(
+          `mfa deleteFactor ${fixture.email} (${stale.id}): ${error.message}`,
+        );
+      }
+    }
+    delete secrets[fixture.email];
+
+    // A partir de aquí sí hace falta ser el usuario.
     const client = createClient(url, anonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -320,16 +370,6 @@ async function ensureMfaFactors(): Promise<void> {
       password: E2E_PASSWORD,
     });
     if (signInErr) throw new Error(`mfa signin ${fixture.email}: ${signInErr.message}`);
-
-    const { data: existing } = await client.auth.mfa.listFactors();
-    const verified = (existing?.totp ?? []).find((f) => f.status === "verified");
-    if (verified && secrets[fixture.email]) continue;
-
-    // Sin el secreto guardado un factor previo es inservible: no hay
-    // forma de generar su código. Se retira y se inscribe otro.
-    for (const stale of existing?.totp ?? []) {
-      await client.auth.mfa.unenroll({ factorId: stale.id }).catch(() => {});
-    }
 
     const { data: enrolled, error: enrollErr } = await client.auth.mfa.enroll({
       factorType: "totp",
@@ -362,5 +402,5 @@ export async function seed(): Promise<void> {
   const accountIds = await ensureAccounts(admin, userIds);
   await ensureProfiles(admin, userIds, accountIds);
   await ensureConversations(admin, userIds, accountIds);
-  await ensureMfaFactors();
+  await ensureMfaFactors(admin, userIds);
 }
