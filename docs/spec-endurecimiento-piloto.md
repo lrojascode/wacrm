@@ -753,9 +753,28 @@ Sin invitación, sin verificar nada, sesión utilizable al instante.
 
 *Riesgo operativo, documentado en `coolify.md`:* el día del deploy cada owner y cada admin necesita una app de autenticación. No quedan bloqueados —se les dirige a la pantalla de inscripción, con QR y clave manual—, y si alguien pierde el teléfono se le retira el factor con un `DELETE` sobre `auth.mfa_factors`, que lo devuelve a "sin inscribir", no a "sin acceso".
 
-**P0-SEC-10 — Aplicar CSP**
-`next.config.ts:39`
+**P0-SEC-10 — Aplicar CSP** — ✅ **COMPLETADA** (2026-09-10)
+`next.config.ts`, `e2e/csp.spec.ts`, `playwright.config.ts`.
 *Aceptación:* tras un periodo de report-only sin violaciones en rutas reales, la cabecera pasa a `Content-Security-Policy`; la app funciona completa (inbox con media, realtime, gráficos) sin errores de consola.
+
+*El «periodo de report-only» era el problema, no el requisito.* `Report-Only` es la forma correcta de empezar y una malísima de terminar: no bloquea nada, así que su único valor está en que alguien lea los informes — y nadie los leía. Así que lo primero fue **leerlos**: un spec que registra `securitypolicyviolation` antes de navegar y recorre las pantallas que nombra la aceptación.
+
+*Lo que apareció al medir, y por qué importaba.* Contra un build de producción, **cada pantalla con datos violaba `connect-src`**: decenas de violaciones en inbox, dashboard y ajustes. La causa: la política escribía `https://*.supabase.co` a mano, y el proyecto local vive en `http://127.0.0.1:54321`. En modo informe nadie se enteraba; **el día que se activara el bloqueo, la app se habría quedado sin datos.** Ese es exactamente el fallo que un periodo de report-only sin nadie mirando garantiza que ocurra.
+
+Y no era solo cosa de local: ese comodín habría roto igual cualquier despliegue con **Supabase autoalojado en dominio propio**, que es un escenario real de este producto. Ahora los orígenes se **derivan** de `NEXT_PUBLIC_SUPABASE_URL` —incluido el esquema `wss:` del realtime, que no lo cubre la entrada `https:` aunque el host sea el mismo—, así que la política es correcta en los tres casos.
+
+*Endurecimiento adicional, todo verificado:*
+
+- **`unsafe-eval` fuera en producción.** React lo usa solo en desarrollo, para reconstruir stacks de error. La política ahora lo concede únicamente cuando `NODE_ENV === "development"`.
+- **`object-src 'none'`**, que faltaba. `default-src 'self'` lo habría permitido del propio origen; cierra una vía clásica de inyección.
+
+*Lo que NO se hizo, con su motivo.* `script-src` conserva `'unsafe-inline'`, porque Next inyecta su propio arranque e hidratación en línea. Quitarlo exige CSP por nonce, y eso **obliga a renderizar dinámicamente las 6 páginas que hoy son estáticas** (login, signup, `/mfa`, recuperación) y, peor, choca de frente con las reglas de caché de `next.config.ts`: un nonce en una página que el CDN cachea se comparte entre visitantes y deja de ser un nonce. Es un proyecto aparte —con la historia del incidente de caché de Hostinger detrás—, no un ajuste. Las directivas que sí quedan activas protegen de verdad: `connect-src` acota la exfiltración, `frame-ancestors` el clickjacking, `form-action` el secuestro de formularios, `base-uri` la inyección de `<base>`.
+
+*Infraestructura nueva:* `E2E_PROD=1` corre la suite contra un build real. Existe porque en desarrollo React usa `eval` y el overlay inyecta lo suyo, así que **una pasada en dev no puede confirmar que `unsafe-eval` sobra**. El spec de CSP corre en los dos modos; la afirmación fuerte sobre scripts solo vale contra el artefacto.
+
+*Resultado medido:* CSP en modo bloqueo, **0 violaciones** en login, alta, inbox con conversación abierta + media + realtime, dashboard con gráficos (Recharts, el consumidor más exigente de `style-src`) y ajustes. **Verificado que el spec detecta el fallo:** quitando Supabase de `connect-src`, el caso del inbox falla. `typecheck` 0, `lint` 0 errores / 41 warnings, 104 archivos / 1023 tests, `build` 100 rutas, **E2E 94/94 en desarrollo y 93/93 contra el build de producción**.
+
+*Un hallazgo colateral, anotado y no escondido.* El modo producción destapó que la reproducción de P0-BUG-01 (`auth-trace.spec.ts`) **solo funciona en `next dev`**: contra un build real, falsear la caducidad en la cookie y cambiar la visibilidad no dispara ningún evento de auth. No es una regresión —P0-BUG-02/03/04/05 tienen sus propias pruebas y pasan en los dos modos— sino una dependencia del calendario de refresco de auth-js. Se marca como saltada en producción **con el motivo escrito**; hacerla válida allí es una investigación aparte.
 
 ### P1 · Workstream QUEUE — Durabilidad
 

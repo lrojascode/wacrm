@@ -255,6 +255,44 @@ puede pedir esto puede saltarse el segundo factor de esa cuenta.
 
 ---
 
+## 3.quater La CSP pasa a bloquear — comprueba una variable
+
+No hay nada que activar: la `Content-Security-Policy` deja de ser
+`Report-Only` con este deploy (P0-SEC-10). Pero **depende de una
+variable de entorno**, y conviene mirarla antes.
+
+Los orígenes de Supabase permitidos ya no están escritos a mano: se
+derivan de `NEXT_PUBLIC_SUPABASE_URL` cuando arranca el servidor. Eso
+es lo que hace que la política sea correcta con Supabase gestionado,
+autoalojado en dominio propio, o en local.
+
+> **Si esa variable falta en el entorno de Coolify**, la política cae al
+> comodín `https://*.supabase.co`. Con Supabase gestionado no se nota;
+> con Supabase autoalojado en tu propio dominio, el navegador
+> **bloqueará todas las llamadas a la base de datos** y la app se
+> quedará sin datos, sin más pista que errores de CSP en la consola.
+>
+> La variable ya es obligatoria para que la app arranque, así que lo
+> normal es que esté. Compruébalo igual: es un minuto.
+
+### Comprobarlo tras el deploy
+
+```bash
+curl -sI https://tu-dominio.com/login | grep -i '^content-security-policy'
+```
+
+Debe aparecer `content-security-policy:` **sin** el sufijo
+`-report-only`, y el `connect-src` debe nombrar **tu** host de Supabase.
+Si dice `*.supabase.co` y tú no usas Supabase gestionado, falta la
+variable.
+
+Con la consola del navegador abierta, entra al inbox con una
+conversación con media y mira el dashboard: cero errores de CSP. Eso es
+lo que la suite comprueba en cada ejecución (`e2e/csp.spec.ts`), pero
+una pasada a mano sobre el dominio real no sobra el primer día.
+
+---
+
 ## 4. Redeploy en Coolify
 
 Solo cuando el paso 3 esté limpio:
@@ -280,6 +318,7 @@ antes, se va a notar el mismo día del deploy.
 | **`/signup` ya no registra a nadie sin invitación.** La página lo dice en lugar de mostrar un formulario que fallaría al enviar, y `/login` deja de ofrecer "Crear cuenta" cuando no hay invitación de por medio. | Cualquiera que enviara el enlace de `/signup` a un compañero: ahora hay que mandarle una invitación desde Configuración → Miembros. |
 | **Quien no tenga el correo verificado no entra al dashboard.** | Nadie hoy: con `enable_confirmations = false` GoTrue autoconfirma, así que toda cuenta existente ya lo tiene. Comprobado contra la base antes de añadir el control. Importa el día que actives las confirmaciones. |
 | **`owner` y `admin` necesitan un autenticador TOTP para tocar la configuración**, y cinco acciones críticas piden el código otra vez si han pasado más de 5 minutos. | Todo el que administre una cuenta, el mismo día del deploy. Ver §3.ter: avísales antes, y ten a mano el SQL de recuperación. **`agent` y `viewer` no se ven afectados.** |
+| **La CSP pasa a bloquear de verdad.** Antes solo informaba. | Nadie, si `NEXT_PUBLIC_SUPABASE_URL` está bien: la suite recorre login, inbox con media y realtime, dashboard con gráficos y ajustes contra un build de producción y exige cero violaciones. Ver §3.quater. |
 
 ---
 

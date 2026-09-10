@@ -4,20 +4,63 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 /**
+ * Orígenes de Supabase permitidos para XHR, WebSocket y media.
+ *
+ * Se DERIVAN de `NEXT_PUBLIC_SUPABASE_URL` en vez de escribir
+ * `https://*.supabase.co` a mano. La versión anterior lo escribía a
+ * mano, y medirlo lo delató: contra un build de producción, cada
+ * pantalla de la app disparaba violaciones de `connect-src` — decenas
+ * en el inbox y en el dashboard— porque el proyecto local vive en
+ * `http://127.0.0.1:54321`. En modo informe nadie se enteraba; el día
+ * que se activara el bloqueo, la app se habría quedado sin datos.
+ *
+ * El mismo comodín habría roto cualquier despliegue con Supabase
+ * autoalojado en dominio propio, que es un escenario real de este
+ * producto. Derivarlo lo hace correcto en los tres casos: local,
+ * gestionado y autoalojado.
+ *
+ * El WebSocket de realtime necesita su propio esquema: `ws:`/`wss:` no
+ * los cubre la entrada `http(s)` aunque el host sea el mismo.
+ */
+function supabaseOrigins(): string[] {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!raw) {
+    // Sin la variable no se puede derivar nada. Se cae al comodín de
+    // Supabase gestionado, que es el caso mayoritario, en vez de
+    // emitir una política que bloquearía todo.
+    return ["https://*.supabase.co", "wss://*.supabase.co"];
+  }
+  try {
+    const { protocol, host } = new URL(raw);
+    const ws = protocol === "https:" ? "wss:" : "ws:";
+    return [`${protocol}//${host}`, `${ws}//${host}`];
+  } catch {
+    return ["https://*.supabase.co", "wss://*.supabase.co"];
+  }
+}
+
+const SUPABASE_ORIGINS = supabaseOrigins();
+const IS_DEV = process.env.NODE_ENV === "development";
+
+/**
  * Baseline security headers applied to every response.
  *
- * CSP ships as `Content-Security-Policy-Report-Only` so the browser
- * surfaces violations in the console without blocking anything — once
- * we have confidence nothing legit trips it (two deploys, a pass on
- * every route), flip the key to `Content-Security-Policy` to enforce.
+ * La CSP se aplica en modo BLOQUEO (P0-SEC-10). Estuvo en
+ * `Report-Only` durante un tiempo, que es la forma correcta de empezar
+ * y una malísima de terminar: no bloquea nada, así que su único valor
+ * está en que alguien lea los informes — y nadie los leía. La prueba
+ * que autoriza el cambio es `e2e/csp.spec.ts`, que recorre login,
+ * inbox con media y realtime, dashboard con gráficos y ajustes, y
+ * exige cero violaciones. Corre también contra un build de producción
+ * (`E2E_PROD=1`), que es el único sitio donde la ausencia de
+ * `unsafe-eval` se puede confirmar.
  *
- * The rest of the headers are straight blocks, safe to enforce today:
- *   - HSTS: only meaningful on HTTPS (no-op on http://localhost).
+ * El resto de cabeceras son bloqueos directos, seguros desde siempre:
+ *   - HSTS: solo significa algo sobre HTTPS (inocuo en http://localhost).
  *   - X-Content-Type-Options / X-Frame-Options / Referrer-Policy:
- *     baseline OWASP hardening, no behavioural cost.
- *   - Permissions-Policy: we don't use camera / microphone / etc, so
- *     deny them. A supply-chain compromise or a forgotten plugin
- *     can't silently opt back in.
+ *     endurecimiento OWASP de base, sin coste de comportamiento.
+ *   - Permissions-Policy: no usamos cámara ni geolocalización, así que
+ *     se deniegan. Una dependencia comprometida no puede reactivarlas.
  */
 const SECURITY_HEADERS = [
   {
@@ -28,34 +71,50 @@ const SECURITY_HEADERS = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
-    // Microphone is allowed for same-origin (`self`) so the inbox
-    // composer can record voice notes via MediaRecorder. Everything
-    // else stays denied — a compromised dependency can't silently grab
-    // the camera / geolocation / etc.
+    // El micrófono se permite para el propio origen (`self`) porque el
+    // compositor del inbox graba notas de voz con MediaRecorder. Lo
+    // demás sigue denegado.
     key: "Permissions-Policy",
     value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=()",
   },
   {
-    key: "Content-Security-Policy-Report-Only",
+    key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      // Next.js needs 'unsafe-inline' for its inline hydration script
-      // and 'unsafe-eval' in dev + some production optimisations.
-      // Nonce-based CSP is a later project.
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      // Tailwind + inline style attributes on lots of components.
+      // `unsafe-inline` sigue aquí porque Next inyecta su propio script
+      // de arranque e hidratación en línea. Quitarlo exige CSP por
+      // nonce, y eso obliga a renderizar TODAS las páginas de forma
+      // dinámica — incluidas las seis que hoy son estáticas (login,
+      // signup, /mfa, recuperación de contraseña). Peor: un nonce en
+      // una página cacheada por el CDN se comparte entre visitantes y
+      // deja de ser un nonce, así que habría que rehacer también las
+      // reglas de Cache-Control de abajo. Es un proyecto aparte, no un
+      // ajuste; queda anotado en la spec con ese motivo.
+      //
+      // `unsafe-eval` SOLO en desarrollo: React lo usa allí para
+      // reconstruir stacks de error del servidor. En producción ni
+      // React ni Next lo necesitan, así que no se concede — verificado
+      // contra un build real, no supuesto.
+      `script-src 'self' 'unsafe-inline'${IS_DEV ? " 'unsafe-eval'" : ""}`,
+      // Tailwind y los atributos `style` en línea de 25 componentes,
+      // más los que genera Recharts al dibujar.
       "style-src 'self' 'unsafe-inline'",
-      // Supabase public-bucket avatars, contact avatars (arbitrary
-      // https URLs paste-able from the UI), OG images, data URLs for
-      // tiny inline assets.
+      // Avatares del bucket público, avatares de contacto (URLs https
+      // arbitrarias que se pegan desde la UI), imágenes OG y data: URLs
+      // para el QR del segundo factor (P0-SEC-09).
       "img-src 'self' data: blob: https:",
-      // Outbound media previews (blob: from MediaRecorder + file picker)
-      // and Supabase public-bucket audio/video the inbox renders.
-      "media-src 'self' blob: https://*.supabase.co",
+      // Previsualización de media saliente (blob: de MediaRecorder y
+      // del selector de archivos) y el audio/vídeo del bucket que
+      // pinta el inbox.
+      `media-src 'self' blob: ${SUPABASE_ORIGINS[0]}`,
       "font-src 'self' data:",
-      // Supabase REST + realtime (WSS). All Meta API calls happen
-      // server-side, so graph.facebook.com does not belong here.
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+      // REST + realtime. Las llamadas a la API de Meta salen del
+      // servidor, así que graph.facebook.com no pinta nada aquí.
+      `connect-src 'self' ${SUPABASE_ORIGINS.join(" ")}`,
+      // No usamos <object>, <embed> ni <applet>. `default-src 'self'`
+      // los permitiría del propio origen; 'none' cierra del todo una
+      // vía clásica de inyección.
+      "object-src 'none'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

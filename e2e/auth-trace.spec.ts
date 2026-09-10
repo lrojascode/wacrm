@@ -164,6 +164,29 @@ test.describe("P0-BUG-01 · diagnóstico de transiciones de auth", () => {
       "NEXT_PUBLIC_AUTH_TRACE no está activo — el servidor de dev se reutilizó sin el flag",
     );
 
+    // Esta reproducción es de DESARROLLO, y conviene decirlo en vez de
+    // dejar que falle sola cuando alguien corra la suite con
+    // `E2E_PROD=1` (añadido en P0-SEC-10 para medir la CSP contra el
+    // artefacto real).
+    //
+    // Medido contra un build de producción: falsear la caducidad dentro
+    // de la cookie y cambiar la visibilidad NO dispara ningún evento de
+    // auth — ni SIGNED_OUT, ni refresco, ni expulsión; el usuario se
+    // queda en su conversación. En `next dev` sí ocurre, que es donde
+    // se diagnosticó el bug. La diferencia está en cuándo auth-js
+    // vuelve a leer la sesión del almacenamiento, no en el arreglo:
+    // P0-BUG-02/03/04/05 tienen sus propias pruebas y pasan en los dos
+    // modos.
+    //
+    // Se deja anotado en vez de forzarlo: hacer que la reproducción
+    // valga también en producción es una investigación aparte, y
+    // esconderla con un `if` habría sido peor que nombrarla.
+    test.skip(
+      process.env.E2E_PROD === "1",
+      "La reproducción depende del calendario de refresco de auth-js en `next dev`; " +
+        "contra un build de producción el mismo forzado no dispara ningún evento (medido).",
+    );
+
     // Recreates the one condition that actually expels a user, found by
     // elimination: neither a plain tab return nor a cleared cookie nor
     // a *network* failure on refresh does it — auth-js deliberately

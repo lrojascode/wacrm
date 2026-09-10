@@ -24,6 +24,9 @@ import { defineConfig, devices } from "@playwright/test";
 // ============================================================
 
 const PORT = Number(process.env.E2E_PORT ?? 3100);
+
+/** Correr contra un build de producción en vez de `next dev`. */
+const PROD = process.env.E2E_PROD === "1";
 // `localhost`, NOT `127.0.0.1`. The Next 16 dev server only accepts the
 // HMR WebSocket handshake on the localhost origin; requested over
 // 127.0.0.1 the handshake fails with ERR_INVALID_HTTP_RESPONSE and,
@@ -86,7 +89,21 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `pnpm run dev --port ${PORT}`,
+    // `E2E_PROD=1` corre la suite contra un build de producción.
+    //
+    // Existe por la CSP (P0-SEC-10): en desarrollo React usa `eval`
+    // para reconstruir stacks de error, así que la política necesita
+    // `unsafe-eval` ahí y no en producción. Medir las violaciones
+    // contra `next dev` daría por buena una política que en producción
+    // podría romper —o al revés, exigiría un permiso que sobra— así
+    // que la comprobación seria se hace contra el artefacto real.
+    //
+    // También cambia qué se sirve: en dev, base-server.js pisa
+    // Cache-Control en cada página, lo que esconde las reglas de
+    // caché de next.config.
+    command: PROD
+      ? `pnpm run build && pnpm run start --port ${PORT}`
+      : `pnpm run dev --port ${PORT}`,
     url: BASE_URL,
     // Turns on the P0-BUG-01 auth tracing so the diagnostic spec can
     // read the timeline. Inert everywhere else: the trace module is a
@@ -97,10 +114,13 @@ export default defineConfig({
     // flag is used as-is and the diagnostic spec will skip.
     env: { NEXT_PUBLIC_AUTH_TRACE: "1" },
     // Locally, reuse a server the developer already has running.
-    reuseExistingServer: !process.env.CI,
+    // Un servidor de dev que ya esté corriendo no sirve para la pasada
+    // de producción: reutilizarlo mediría el artefacto equivocado.
+    reuseExistingServer: !process.env.CI && !PROD,
     // A cold Next dev server compiles routes on demand; the first
     // navigation of a run is far slower than the rest.
-    timeout: 180_000,
+    // Un build completo tarda más que arrancar `next dev` en frío.
+    timeout: PROD ? 420_000 : 180_000,
     stdout: "pipe",
     stderr: "pipe",
   },
