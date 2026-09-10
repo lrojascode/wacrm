@@ -19,11 +19,7 @@
 
 import { NextResponse } from 'next/server';
 
-import {
-  getCurrentAccount,
-  requireRole,
-  toErrorResponse,
-} from '@/lib/auth/account';
+import { getCurrentAccount, requireFreshAuth, requireRole, toErrorResponse } from '@/lib/auth/account';
 import { generateApiKey } from '@/lib/api-keys/keys';
 import { normalizeScopes } from '@/lib/api-keys/scopes';
 import {
@@ -71,6 +67,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const ctx = await requireRole('owner');
+    // `reauth`: una API key es una credencial de larga vida que salta
+    // la sesión por completo. Crearla es fabricar otra llave de la
+    // casa (P0-SEC-09).
+    await requireFreshAuth(ctx);
 
     const limit = checkRateLimit(
       `admin:apiKeyCreate:${ctx.userId}`,

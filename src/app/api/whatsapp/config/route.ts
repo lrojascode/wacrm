@@ -181,7 +181,10 @@ export async function GET() {
 // the codebase calls its single source of truth. Going through
 // withRoute removes that drift — the ladder is defined in one place, so
 // a future change to it cannot leave this file behind.
-export const POST = withRoute({ minRole: 'owner' }, async (ctx, request) => {
+// `reauth`: aquí se guarda el token de WhatsApp del inquilino. Rotarlo
+// desde una sesión robada desviaría toda su mensajería, así que se
+// vuelve a pedir el segundo factor (P0-SEC-09).
+export const POST = withRoute({ minRole: 'owner', reauth: true }, async (ctx, request) => {
   const { supabase, userId, accountId } = ctx;
   try {
     const body = await request.json();
@@ -446,7 +449,9 @@ export const POST = withRoute({ minRole: 'owner' }, async (ctx, request) => {
  */
 // Owner-only for the same reason as POST — resetting clears the stored
 // credentials.
-export const DELETE = withRoute({ minRole: 'owner' }, async (ctx) => {
+// `reauth`: desconectar deja al inquilino sin WhatsApp. Irreversible
+// en la práctica — hay que reconectar con Meta desde cero.
+export const DELETE = withRoute({ minRole: 'owner', reauth: true }, async (ctx) => {
   const { supabase, accountId } = ctx;
   try {
     const { error: deleteError } = await supabase

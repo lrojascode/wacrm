@@ -10,6 +10,8 @@
 import { expect, type Page } from "@playwright/test";
 
 import { E2E_PASSWORD, userByKey, type SeedUser } from "./fixtures";
+import { mfaSecretFor } from "./mfa-secrets";
+import { msLeftInWindow, totpCode } from "./totp";
 
 /**
  * Log in and wait until the app is genuinely usable.
@@ -54,9 +56,63 @@ export async function loginAs(page: Page, userKey: string): Promise<SeedUser> {
   // The proxy sends an authenticated user away from /login, so landing
   // anywhere outside it means the session cookie was accepted.
   await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30_000 });
+
+  // Segundo factor (P0-SEC-09).
+  //
+  // Quien administra la cuenta lleva TOTP inscrito por el seed, igual
+  // que lo llevará en producción, así que la sesión aterriza en aal1 y
+  // el shell la manda a /mfa. Se supera el reto por la página real —no
+  // por la API— para que cada login de la suite ejercite el camino que
+  // hace una persona.
+  await completeMfaChallengeIfPresent(page, user);
+
   await expect(page.locator("text=Loading...")).toHaveCount(0, { timeout: 30_000 });
 
   return user;
+}
+
+/**
+ * Si la navegación acabó en /mfa, teclea el código y continúa.
+ *
+ * No es incondicional: un agent o un viewer no tienen factor y nunca
+ * pasan por aquí, que es precisamente lo que la aceptación pide
+ * («un agent no se ve afectado»). Si alguna vez acabaran en /mfa, este
+ * helper fallaría al no encontrar secreto — y sería el aviso correcto.
+ */
+async function completeMfaChallengeIfPresent(page: Page, user: SeedUser): Promise<void> {
+  const secret = mfaSecretFor(user.email);
+
+  // Sin factor inscrito no hay reto que superar, y tampoco debe
+  // haberlo: si un agent acabara en /mfa, esto lo dejaría pasar y el
+  // fallo aparecería más adelante y más lejos. Por eso se comprueba.
+  if (!secret) {
+    await expect(page).not.toHaveURL(/\/mfa/);
+    return;
+  }
+
+  // Se ESPERA a /mfa en vez de mirar la URL de golpe.
+  //
+  // El redirect lo decide el navegador después de leer el nivel de la
+  // sesión, así que en el instante en que termina el login la URL
+  // todavía es la del destino. Mirarla entonces daba un falso "no hace
+  // falta reto": la sesión se quedaba en aal1 y el rebote aparecía en
+  // la siguiente navegación, lejos de la causa.
+  //
+  // Esperarlo es además la afirmación que pide la aceptación: a quien
+  // administra la cuenta se le dirige al segundo factor.
+  await page.waitForURL(/\/mfa/, { timeout: 30_000 });
+  await page.waitForSelector('[data-testid="mfa-code"]', { timeout: 30_000 });
+
+  // Un código a punto de caducar puede cambiar de intervalo entre que
+  // se teclea y que el servidor lo comprueba: fallaría una vez de cada
+  // treinta, que es la peor clase de test intermitente.
+  if (msLeftInWindow() < 3_000) {
+    await page.waitForTimeout(msLeftInWindow() + 250);
+  }
+
+  await page.locator('[data-testid="mfa-code"]').fill(totpCode(secret));
+  await page.locator('[data-testid="mfa-submit"]').click();
+  await page.waitForURL((url) => !url.pathname.startsWith("/mfa"), { timeout: 30_000 });
 }
 
 /**

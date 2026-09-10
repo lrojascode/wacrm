@@ -728,9 +728,30 @@ Sin invitación, sin verificar nada, sesión utilizable al instante.
 
 *Anotado, no perseguido:* durante el alta del invitado la consola registra `[PresenceHeartbeat] touch_presence failed: No account for caller`. Es un estado transitorio entre crear la cuenta y canjear la invitación; no rompe el flujo y es anterior a este cambio.
 
-**P0-SEC-09 — MFA para owner/admin y reautenticación en acciones críticas**
-Supabase MFA (TOTP). `withRoute` acepta `reauth: true`.
-*Aceptación:* un `owner`/`admin` sin MFA inscrito es dirigido a inscripción y no puede operar configuración; acciones críticas (rotar token de WhatsApp, exportación completa, transferir propiedad, crear API key, eliminar cuenta) exigen reautenticación reciente; un `agent` no se ve afectado.
+**P0-SEC-09 — MFA para owner/admin y reautenticación en acciones críticas** — ✅ **COMPLETADA** (2026-09-10)
+`src/lib/auth/mfa.ts`, `src/lib/auth/account.ts`, `src/lib/auth/guard.ts`, `src/app/(auth)/mfa/page.tsx`, `src/hooks/use-mfa-gate.ts`, `supabase/config.toml`, `e2e/mfa.spec.ts`.
+*Aceptación:* un `owner`/`admin` sin MFA inscrito es dirigido a inscripción y no puede operar configuración; acciones críticas exigen reautenticación reciente; un `agent` no se ve afectado.
+
+*La decisión de diseño que hace el resto fácil.* La exigencia de segundo factor **se deriva del `minRole` que cada ruta ya declara**, no de una bandera nueva por ruta. La escala de roles ya dice que `admin` es configuración y `owner` son secretos, así que «configuración exige aal2» se escribe una vez. Marcarlo a mano habría repetido el error que arregló P0-SEC-01 —un olvido es invisible en revisión— y aquí el olvido deja la configuración de un inquilino detrás de una sola contraseña. De ahí sale gratis «un agent no se ve afectado»: ninguna ruta de agent o viewer lo pide, ni siquiera cuando quien llama es el owner.
+
+*Corrección durante la implementación.* La primera versión puso la comprobación en `withRoute`. Estaba mal: **30 de las 48 rutas llaman a `requireRole` directamente** —las que P0-SEC-02 dejó a propósito sin envolver— y ahí vive buena parte de la configuración. Se movió a `requireRole`, que es el punto por el que pasan las 48. `mfa.ts` quedó como lógica pura, sin imports de `account.ts`, lo que además rompe el ciclo y deja los casos raros comprobables sin levantar un cliente.
+
+*Por qué `amr` y no una marca propia.* El token trae `amr: [{ method, timestamp }]`, lo escribe GoTrue y el cliente no puede tocarlo. **Comprobado contra el stack local: volver a verificar el TOTP estando ya en aal2 refresca el timestamp**, que es justo lo que convierte a `amr` en un reloj de reautenticación en vez de un registro de cómo entró la sesión. Las claims se leen con `getClaims()`, que verifica la firma — descodificar el payload a mano convertiría `aal` en un campo que elige el cliente.
+
+*Alcance real de las cinco acciones críticas:* rotar y desconectar el WhatsApp del inquilino, exportación completa, transferir propiedad y crear API key. **«Eliminar cuenta» no existe como ruta en el producto**, así que no se inventó una. Revocar una API key se dejó fuera a propósito: es destructivo pero en la dirección segura, y poner fricción a quitar acceso empuja a no quitarlo.
+
+*Dos trampas de plataforma, encontradas midiendo:*
+
+1. **`next/image` rompe la página de inscripción.** Supabase devuelve el QR como un `data:` URI con un SVG dentro, y `next/image` lo rechaza en ejecución. Lo destapó el E2E de inscripción, no una revisión: la página fallaba justo para quien más la necesita. Se usa `<img>`, que además no tiene nada que optimizar.
+2. **El redirect del cliente no debe decidir sobre un AAL desconocido.** En una carga en frío `currentLevel` llega `null` mientras el cliente hidrata. Tratarlo como "le falta el factor" rebota a quien ya está en aal2; tratarlo como "todo bien" —que fue mi primer parche— hace que el login pase de largo sin retar a nadie y el rebote aparezca en la navegación siguiente, lejos de la causa. Lo correcto es **esperar** una respuesta definida: sabemos que hay sesión.
+
+*Un olor en mi propio código, detectado por un test.* `readAssurance` cacheaba las claims escribiendo en el contexto de quien la llamaba. Un test que compartía un objeto de contexto entre casos arrastró la sesión "recién autenticada" del caso anterior. En producción cada petición trae un contexto nuevo, así que no había fallo real — pero una función llamada *read* que escribe en el objeto ajeno es una trampa esperando. Ahora el único que rellena `ctx.assurance` es `requireRole`.
+
+*Resultado medido:* `typecheck` 0, `lint` 0 errores / 41 warnings (línea base), **104 archivos / 1023 tests**, `build` 100 rutas, **E2E 84/84** (4 saltados por diseño; 72 → 84). Los usuarios semilla de admin y owner **inscriben TOTP de verdad** en el seed —con el mismo `enroll` + `challengeAndVerify` que usa la página— y cada `loginAs` de la suite supera el reto por la UI real, así que las 84 pruebas ejercitan el camino completo en vez de rodearlo.
+
+*Cobertura, con su límite dicho:* la denegación por antigüedad se prueba en unidad (ventana, borde, `amr` ausente, timestamp adelantado, desfase de reloj). En E2E se prueba que una acción crítica **pasa** con autenticación reciente; probar la denegación exigiría esperar cinco minutos de reloj real.
+
+*Riesgo operativo, documentado en `coolify.md`:* el día del deploy cada owner y cada admin necesita una app de autenticación. No quedan bloqueados —se les dirige a la pantalla de inscripción, con QR y clave manual—, y si alguien pierde el teléfono se le retira el factor con un `DELETE` sobre `auth.mfa_factors`, que lo devuelve a "sin inscribir", no a "sin acceso".
 
 **P0-SEC-10 — Aplicar CSP**
 `next.config.ts:39`

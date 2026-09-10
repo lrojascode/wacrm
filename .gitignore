@@ -52,3 +52,6 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Secretos TOTP de los usuarios semilla de E2E (se regeneran solos)
+/e2e/.mfa-secrets.json

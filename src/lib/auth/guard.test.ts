@@ -17,6 +17,13 @@ let currentRole: AccountRole | null = "viewer";
 let sessionMissing = false;
 /** P0-SEC-08: whether the signed-in user has a verified address. */
 let emailVerified = true;
+/** P0-SEC-09: assurance level and authentication history in the token. */
+let aal: string = "aal2";
+let amr: Array<{ method: string; timestamp: number }> = [
+  { method: "password", timestamp: Math.floor(Date.now() / 1000) },
+  { method: "totp", timestamp: Math.floor(Date.now() / 1000) },
+];
+let factors: Array<{ status: string }> = [{ status: "verified" }];
 
 /**
  * Mock the Supabase client, not `getCurrentAccount`.
@@ -38,10 +45,12 @@ vi.mock("@/lib/supabase/server", () => ({
                 user: {
                   id: "u1",
                   email_confirmed_at: emailVerified ? "2026-01-01T00:00:00Z" : null,
+                  factors,
                 },
               },
               error: null,
             },
+      getClaims: async () => ({ data: { claims: { aal, amr } }, error: null }),
     },
     from: (table: string) => ({
       select: () => ({
@@ -66,6 +75,15 @@ beforeEach(() => {
   sessionMissing = false;
   currentRole = "viewer";
   emailVerified = true;
+  // Por defecto, alguien con el segundo factor puesto y recién
+  // autenticado: así los tests que no hablan de MFA siguen midiendo lo
+  // suyo, y los que sí lo hacen cambian solo lo que les interesa.
+  aal = "aal2";
+  factors = [{ status: "verified" }];
+  amr = [
+    { method: "password", timestamp: Math.floor(Date.now() / 1000) },
+    { method: "totp", timestamp: Math.floor(Date.now() / 1000) },
+  ];
 });
 
 describe("withRoute — matriz de roles", () => {
@@ -188,5 +206,109 @@ describe("withRoute — correo sin verificar (P0-SEC-08)", () => {
 
     expect((await route(request())).status).toBe(200);
     expect(handler).toHaveBeenCalledOnce();
+  });
+});
+
+describe("withRoute — segundo factor (P0-SEC-09)", () => {
+  it("una ruta de agent no lo pide, ni siquiera al owner", async () => {
+    // «Un agent no se ve afectado» sale de aquí: la exigencia se
+    // deriva del minRole de la RUTA, no del rol de quien llama, así
+    // que el owner sigue trabajando en el inbox sin haber inscrito
+    // nada.
+    currentRole = "owner";
+    aal = "aal1";
+    factors = [];
+    const route = withRoute({ minRole: "agent" }, handler);
+
+    expect((await route(request())).status).toBe(200);
+  });
+
+  for (const minRole of ["admin", "owner"] as const) {
+    it(`una ruta de ${minRole} sin factor inscrito manda a inscribirse`, async () => {
+      currentRole = "owner";
+      aal = "aal1";
+      factors = [];
+      const route = withRoute({ minRole }, handler);
+
+      const res = await route(request());
+      const body = (await res.json()) as { code?: string };
+
+      expect(res.status).toBe(403);
+      expect(body.code).toBe("mfa_enrollment_required");
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it(`una ruta de ${minRole} con factor sin usar pide el código`, async () => {
+      // Distinto del anterior a propósito: mandar a inscribirse a
+      // quien ya tiene el factor puesto es un callejón sin salida.
+      currentRole = "owner";
+      aal = "aal1";
+      factors = [{ status: "verified" }];
+      const route = withRoute({ minRole }, handler);
+
+      const body = (await (await route(request())).json()) as { code?: string };
+
+      expect(body.code).toBe("mfa_challenge_required");
+    });
+  }
+
+  it("inscribirse no pasa por aquí, así que no hay punto muerto", async () => {
+    // La inscripción ocurre en el navegador contra Supabase
+    // (`supabase.auth.mfa.enroll`), no por una ruta de esta app. Si
+    // algún día lo hiciera, este test se rompería y habría que pensar
+    // en una escotilla — que es justo cuándo hace falta, y no antes.
+    const rutas = await import("node:fs").then((fs) =>
+      fs.readdirSync(new URL("../../app/api/account", import.meta.url).pathname),
+    );
+    expect(rutas).not.toContain("mfa");
+  });
+
+  it("con aal2 pasa con normalidad", async () => {
+    // Contrapeso: sin esto la suite pasaría igual con un guard que
+    // rechazara a todo administrador.
+    currentRole = "admin";
+    aal = "aal2";
+    const route = withRoute({ minRole: "admin" }, handler);
+
+    expect((await route(request())).status).toBe(200);
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+});
+
+describe("withRoute — reautenticación (P0-SEC-09)", () => {
+  const hace = (segundos: number) => [
+    { method: "totp", timestamp: Math.floor(Date.now() / 1000) - segundos },
+  ];
+
+  it("una acción crítica con autenticación vieja se rechaza", async () => {
+    currentRole = "owner";
+    amr = hace(30 * 60);
+    const route = withRoute({ minRole: "owner", reauth: true }, handler);
+
+    const res = await route(request());
+    const body = (await res.json()) as { code?: string };
+
+    expect(res.status).toBe(403);
+    expect(body.code).toBe("reauth_required");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("recién autenticado, pasa", async () => {
+    currentRole = "owner";
+    amr = hace(10);
+    const route = withRoute({ minRole: "owner", reauth: true }, handler);
+
+    expect((await route(request())).status).toBe(200);
+  });
+
+  it("sin reauth:true la misma antigüedad no molesta", async () => {
+    // El contrapeso que prueba que la ventana solo aplica donde se
+    // pidió: si no, sería un cierre de sesión a los cinco minutos.
+    currentRole = "owner";
+    amr = hace(30 * 60);
+    const route = withRoute({ minRole: "owner" }, handler);
+
+    expect((await route(request())).status).toBe(200);
   });
 });

@@ -29,6 +29,12 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  deriveMfaStatus,
+  isReauthFresh,
+  routeRequiresMfa,
+  type MfaStatus,
+} from "./mfa";
 import { hasMinRole, isAccountRole, type AccountRole } from "./roles";
 
 // ------------------------------------------------------------
@@ -85,17 +91,54 @@ export class EmailNotVerifiedError extends ForbiddenError {
  * server internals out of the wire.
  */
 export function toErrorResponse(err: unknown): NextResponse {
-  if (err instanceof EmailNotVerifiedError) {
-    return NextResponse.json(
-      { error: err.message, code: err.code },
-      { status: err.status },
-    );
+  // Cualquier error clasificado que traiga un `code` legible por la UI
+  // lo propaga. Sin esto, "inscribe un segundo factor", "mete el
+  // código" y "no tienes permiso" llegarían al cliente como el mismo
+  // 403 y no habría forma de ofrecer la acción correcta.
+  if (err instanceof UnauthorizedError || err instanceof ForbiddenError) {
+    const code = (err as unknown as { code?: unknown }).code;
+    if (typeof code === "string") {
+      return NextResponse.json(
+        { error: err.message, code },
+        { status: err.status },
+      );
+    }
   }
   if (err instanceof UnauthorizedError || err instanceof ForbiddenError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
   console.error("[toErrorResponse] uncategorized error:", err);
   return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+}
+
+/**
+ * Falta el segundo factor (P0-SEC-09). 403 con un `code` que la UI
+ * traduce en "inscríbete" o "mete el código" — un 403 a secas manda a
+ * buscar un problema de permisos que no existe.
+ */
+export class MfaRequiredError extends ForbiddenError {
+  readonly code: "mfa_enrollment_required" | "mfa_challenge_required";
+  constructor(status: Exclude<MfaStatus, "satisfied">) {
+    super(
+      status === "enrollment_required"
+        ? "Set up two-factor authentication to manage configuration"
+        : "Enter your authentication code to continue",
+    );
+    this.name = "MfaRequiredError";
+    this.code =
+      status === "enrollment_required"
+        ? "mfa_enrollment_required"
+        : "mfa_challenge_required";
+  }
+}
+
+/** La acción es crítica y la autenticación ya no es reciente. */
+export class ReauthRequiredError extends ForbiddenError {
+  readonly code = "reauth_required" as const;
+  constructor() {
+    super("Confirm your identity again to complete this action");
+    this.name = "ReauthRequiredError";
+  }
 }
 
 // ------------------------------------------------------------
@@ -113,6 +156,18 @@ export interface AccountContext {
   role: AccountRole;
   /** Lightweight account meta — id + name. */
   account: { id: string; name: string };
+  /**
+   * Factores MFA del usuario, tal como vinieron en el `getUser()` que
+   * ya se hizo para resolver la sesión. Se guardan para que la
+   * comprobación de segundo factor no repita esa ida y vuelta.
+   */
+  factors: Array<{ status?: string }>;
+  /**
+   * Claims verificadas (`aal`, `amr`), presentes solo si algo las
+   * pidió. `requireRole` las deja aquí cuando comprueba el segundo
+   * factor, para que una acción crítica no vuelva a pedirlas.
+   */
+  assurance?: { aal: unknown; amr: unknown };
 }
 
 /**
@@ -213,7 +268,49 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     accountId: data.account_id,
     role: data.account_role,
     account: { id: account.id, name: account.name },
+    factors: (user.factors ?? []) as Array<{ status?: string }>,
   };
+}
+
+/**
+ * Claims verificadas del token de quien llama.
+ *
+ * `getClaims()` y no una descodificación a mano: valida la firma
+ * (contra el JWKS del proyecto, o contra el servidor de auth cuando la
+ * clave es simétrica). Leer el payload sin verificar convertiría `aal`
+ * en un campo que elige el cliente, que es lo contrario de lo que hace
+ * falta.
+ */
+export async function readAssurance(
+  ctx: AccountContext,
+): Promise<{ aal: unknown; amr: unknown }> {
+  // Reutiliza lo que `requireRole` ya leyó, si lo leyó. No escribe:
+  // el único que rellena `ctx.assurance` es `requireRole`, que es
+  // quien construye el contexto.
+  //
+  // La primera versión sí escribía aquí, y se notó enseguida — un test
+  // que compartía un objeto de contexto entre casos arrastraba las
+  // claims de la prueba anterior y daba por reciente una sesión que ya
+  // no lo era. En producción cada petición trae un contexto nuevo, así
+  // que no había fallo real, pero una función llamada "read" que
+  // escribe en el objeto de quien la llama es una trampa esperando a
+  // que alguien la pise.
+  if (ctx.assurance) return ctx.assurance;
+  const { data, error } = await ctx.supabase.auth.getClaims();
+  if (error || !data?.claims) {
+    throw new ForbiddenError("Could not verify the session");
+  }
+  const claims = data.claims as Record<string, unknown>;
+  return { aal: claims.aal, amr: claims.amr };
+}
+
+/**
+ * Exige que quien llama se haya autenticado dentro de la ventana
+ * (P0-SEC-09). Para acciones irreversibles o que entregan un secreto.
+ */
+export async function requireFreshAuth(ctx: AccountContext): Promise<void> {
+  const { amr } = await readAssurance(ctx);
+  if (!isReauthFresh(amr)) throw new ReauthRequiredError();
 }
 
 /**
@@ -230,5 +327,30 @@ export async function requireRole(min: AccountRole): Promise<AccountContext> {
       `This action requires the '${min}' role or higher`,
     );
   }
+
+  // Segundo factor para configuración y para secretos (P0-SEC-09).
+  //
+  // Va aquí, y no en `withRoute`, porque este es el punto por el que
+  // pasan las 48 rutas: 18 a través del envoltorio y 30 llamando
+  // directamente. En el envoltorio, esas 30 —donde vive buena parte de
+  // la configuración— se habrían quedado fuera sin que nada lo dijera.
+  //
+  // La exigencia se deriva del `minRole` que la ruta ya declara, así
+  // que una ruta nueva de admin la hereda sin acordarse de nada.
+  //
+  // No hace falta escotilla para inscribirse: eso ocurre en el
+  // navegador, contra Supabase directamente
+  // (`supabase.auth.mfa.enroll`), sin pasar por ninguna ruta de esta
+  // app. El punto muerto —inscribir es configuración, la configuración
+  // pide aal2, aal2 exige haber inscrito— sencillamente no existe.
+  if (routeRequiresMfa(min)) {
+    const assurance = await readAssurance(ctx);
+    // Se guarda para que una acción crítica (`reauth`) no vuelva a
+    // pedir las mismas claims en la misma petición.
+    ctx.assurance = assurance;
+    const status = deriveMfaStatus(assurance.aal, ctx.factors);
+    if (status !== "satisfied") throw new MfaRequiredError(status);
+  }
+
   return ctx;
 }

@@ -201,6 +201,60 @@ Debe devolver **200** con un `access_token`.
 
 ---
 
+## 3.ter Activar el segundo factor — ajuste de proyecto, no SQL
+
+En **cada proyecto de cliente**: Authentication → Multi-Factor
+Authentication → **TOTP (App Authenticator): ON**.
+
+> **Hacen falta los dos interruptores, y no son lo mismo.** `enroll`
+> permite añadir un autenticador; `verify` permite usarlo. Con solo el
+> primero, alguien inscribe un factor y luego no puede superar el reto:
+> queda encerrado por su propio segundo factor.
+
+### Qué cambia, exactamente
+
+| Rol | Efecto |
+|---|---|
+| `viewer`, `agent` | **Ninguno.** Ni se les pide ni se les redirige. |
+| `admin`, `owner` | Al entrar se les lleva a `/mfa` a inscribir el autenticador. Sin él, las rutas de **configuración** devuelven 403; el inbox y el trabajo diario siguen funcionando. |
+
+La exigencia se deriva del rol mínimo que cada ruta ya declara, así que
+cubre por igual las rutas nuevas y las viejas.
+
+Además, cinco acciones piden **volver a teclear el código** aunque la
+sesión ya sea de confianza, si la última autenticación tiene más de
+5 minutos: rotar o desconectar el WhatsApp del inquilino, la
+exportación completa, transferir la propiedad y crear una API key.
+
+### ⚠️ Antes de desplegar: avisa a quien administra
+
+El día del deploy, cada `owner` y cada `admin` necesita una app de
+autenticación a mano (Google Authenticator, 1Password, Authy…). No
+quedan bloqueados —se les lleva a la pantalla de inscripción, con QR y
+clave manual—, pero es una sorpresa evitable.
+
+### Si alguien pierde el teléfono
+
+No hay que tocar código ni desactivar nada. Se le retira el factor y en
+su siguiente entrada vuelve a inscribirlo:
+
+```sql
+-- Mira qué tiene inscrito
+SELECT u.email, f.id, f.factor_type, f.status, f.created_at
+FROM auth.mfa_factors f
+JOIN auth.users u ON u.id = f.user_id
+WHERE u.email = 'persona@cliente.com';
+
+-- Retíralo: vuelve al estado "sin inscribir", no a "sin acceso"
+DELETE FROM auth.mfa_factors
+WHERE user_id = (SELECT id FROM auth.users WHERE email = 'persona@cliente.com');
+```
+
+Confírmalo con quien te lo pide por un canal distinto al correo: quien
+puede pedir esto puede saltarse el segundo factor de esa cuenta.
+
+---
+
 ## 4. Redeploy en Coolify
 
 Solo cuando el paso 3 esté limpio:
@@ -225,6 +279,7 @@ antes, se va a notar el mismo día del deploy.
 | **Las URLs del inbox llevan ahora el id de conversación** (`/inbox/<id>`). Los enlaces antiguos `?c=<id>` siguen funcionando con un 308. | Nadie, pero explica por qué la 052 importa más que antes: ese id ahora viaja en enlaces y capturas. |
 | **`/signup` ya no registra a nadie sin invitación.** La página lo dice en lugar de mostrar un formulario que fallaría al enviar, y `/login` deja de ofrecer "Crear cuenta" cuando no hay invitación de por medio. | Cualquiera que enviara el enlace de `/signup` a un compañero: ahora hay que mandarle una invitación desde Configuración → Miembros. |
 | **Quien no tenga el correo verificado no entra al dashboard.** | Nadie hoy: con `enable_confirmations = false` GoTrue autoconfirma, así que toda cuenta existente ya lo tiene. Comprobado contra la base antes de añadir el control. Importa el día que actives las confirmaciones. |
+| **`owner` y `admin` necesitan un autenticador TOTP para tocar la configuración**, y cinco acciones críticas piden el código otra vez si han pasado más de 5 minutos. | Todo el que administre una cuenta, el mismo día del deploy. Ver §3.ter: avísales antes, y ten a mano el SQL de recuperación. **`agent` y `viewer` no se ven afectados.** |
 
 ---
 

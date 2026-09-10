@@ -32,6 +32,7 @@
 import { NextResponse } from 'next/server';
 
 import {
+  requireFreshAuth,
   requireRole,
   toErrorResponse,
   type AccountContext,
@@ -55,6 +56,28 @@ export interface RouteGuardOptions {
    * every downstream query.
    */
   minRole: AccountRole;
+
+  /**
+   * La acción es irreversible o entrega un secreto, y exige que quien
+   * llama se haya autenticado hace poco (P0-SEC-09).
+   *
+   * Es opt-in porque no se deduce del rol: rotar el token de WhatsApp
+   * y renombrar la cuenta son ambas cosas de owner, y solo una merece
+   * volver a pedir el segundo factor. La lista corta —rotar
+   * credenciales, exportar todo, transferir propiedad, crear API key,
+   * borrar la cuenta— está en la spec, y el criterio es el mismo:
+   * ¿puede deshacerse, y qué se lleva quien lo haga?
+   *
+   * Protege contra una sesión robada, no contra una contraseña
+   * robada: la cookie prestada hereda el aal2 de quien la abrió, pero
+   * no puede producir un `amr` fresco sin el factor.
+   *
+   * El segundo factor NO se declara aquí. Se deriva de `minRole` y se
+   * aplica en `requireRole`, para que no pueda olvidarse en una ruta
+   * nueva ni saltárselo llamando a `requireRole` directamente.
+   */
+  reauth?: boolean;
+
 }
 
 /**
@@ -90,7 +113,13 @@ export function withRoute<TArgs extends unknown[]>(
   return async (request: Request, ...args: TArgs): Promise<Response> => {
     let ctx: AccountContext;
     try {
+      // `requireRole` ya aplica el segundo factor cuando el minRole lo
+      // pide — antes que la frescura, porque sin factor inscrito
+      // "vuelve a autenticarte" no tiene una acción que ofrecer.
       ctx = await requireRole(options.minRole);
+      if (options.reauth) {
+        await requireFreshAuth(ctx);
+      }
     } catch (err) {
       return toErrorResponse(err);
     }

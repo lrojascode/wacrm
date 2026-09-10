@@ -21,17 +21,38 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import { GET } from './route';
 
+/**
+ * Cuándo se autenticó quien llama, en segundos. Por defecto, hace un
+ * momento: la exportación exige reautenticación reciente (P0-SEC-09),
+ * así que un contexto sin esto describiría a alguien a quien la ruta
+ * ya no dejaría pasar.
+ */
+let authTimestamp = () => Math.floor(Date.now() / 1000);
+
 const context = {
-  supabase: {},
+  supabase: {
+    auth: {
+      getClaims: async () => ({
+        data: { claims: { aal: 'aal2', amr: [{ method: 'totp', timestamp: authTimestamp() }] } },
+        error: null,
+      }),
+    },
+  },
   accountId: 'account-1',
   userId: 'user-owner',
   role: 'owner',
   account: { id: 'account-1', name: 'Acme' },
+  factors: [{ status: 'verified' }],
 };
 
 beforeEach(() => {
   mocks.requireRole.mockReset();
   mocks.supabaseAdmin.mockReset();
+  authTimestamp = () => Math.floor(Date.now() / 1000);
+  // El contexto es un objeto compartido por todo el archivo, y
+  // `requireRole` deja ahí las claims que leyó. Sin limpiarlo, un caso
+  // heredaría la sesión "recién autenticada" del anterior.
+  delete (context as { assurance?: unknown }).assurance;
 });
 
 describe('GET /api/export/full', () => {
@@ -197,5 +218,22 @@ describe('GET /api/export/full', () => {
 
     // Reading stream should reject due to controller.error
     await expect(response.text()).rejects.toThrow();
+  });
+});
+
+describe('GET /api/export/full — reautenticación (P0-SEC-09)', () => {
+  it('rechaza una sesión que lleva rato abierta', async () => {
+    // Esta ruta entrega TODO el contenido de la cuenta en un archivo.
+    // Que el owner iniciara sesión esta mañana no basta.
+    mocks.requireRole.mockResolvedValue(context);
+    authTimestamp = () => Math.floor(Date.now() / 1000) - 3600;
+
+    const res = await GET();
+    const body = (await res.json()) as { code?: string };
+
+    expect(res.status).toBe(403);
+    expect(body.code).toBe('reauth_required');
+    // Lo que importa: no llegó a tocar la base para exportar nada.
+    expect(mocks.supabaseAdmin).not.toHaveBeenCalled();
   });
 });

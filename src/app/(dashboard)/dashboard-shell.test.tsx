@@ -37,13 +37,44 @@ vi.mock("@/lib/diagnostics/auth-trace", () => ({
 }));
 
 const push = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+const replace = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push, replace }),
+  usePathname: () => "/inbox",
+}));
+
+// P0-SEC-09: el shell llama a `useMfaGate`, que consulta el nivel de
+// autenticación de la sesión local. Se deja correr el hook DE VERDAD
+// —en vez de sustituirlo por un no-op— para que este archivo siga
+// respondiendo a su pregunta con el shell completo: si el redirect a
+// /mfa desmontara el árbol, sería el mismo bug que P0-BUG-02 arregló,
+// entrando por otra puerta.
+let assuranceLevel = "aal2";
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: () => ({
+    auth: {
+      mfa: {
+        getAuthenticatorAssuranceLevel: async () => ({
+          data: { currentLevel: assuranceLevel, nextLevel: assuranceLevel },
+          error: null,
+        }),
+      },
+    },
+  }),
+}));
 
 // Drives `useAuth` from the test body, standing in for the real
 // provider so an auth transition can be triggered on demand.
-let authState: { user: { id: string } | null; loading: boolean } = {
+let authState: {
+  user: { id: string } | null;
+  loading: boolean;
+  accountRole?: string | null;
+  profileLoading?: boolean;
+} = {
   user: null,
   loading: true,
+  accountRole: "agent",
+  profileLoading: false,
 };
 vi.mock("@/hooks/use-auth", () => ({
   useAuth: () => authState,
@@ -70,7 +101,14 @@ function StatefulChild({ onMount }: { onMount: () => void }) {
 
 describe("DashboardShell — el árbol sobrevive a las transiciones de auth", () => {
   beforeEach(() => {
-    authState = { user: null, loading: true };
+    authState = {
+      user: null,
+      loading: true,
+      accountRole: "agent",
+      profileLoading: false,
+    };
+    assuranceLevel = "aal2";
+    replace.mockClear();
     push.mockClear();
   });
 
@@ -89,7 +127,7 @@ describe("DashboardShell — el árbol sobrevive a las transiciones de auth", ()
 
   it("mantiene children montados cuando loading vuelve a true", () => {
     const onMount = vi.fn();
-    authState = { user: { id: "u1" }, loading: false };
+    authState = { ...authState, user: { id: "u1" }, loading: false };
 
     const { rerender } = render(
       <DashboardShell>
@@ -101,7 +139,7 @@ describe("DashboardShell — el árbol sobrevive a las transiciones de auth", ()
     expect(onMount).toHaveBeenCalledTimes(1);
 
     // The transition under test.
-    authState = { user: { id: "u1" }, loading: true };
+    authState = { ...authState, user: { id: "u1" }, loading: true };
     rerender(
       <DashboardShell>
         <StatefulChild onMount={onMount} />
@@ -118,7 +156,7 @@ describe("DashboardShell — el árbol sobrevive a las transiciones de auth", ()
 
   it("mantiene children montados cuando el usuario se vuelve null", () => {
     const onMount = vi.fn();
-    authState = { user: { id: "u1" }, loading: false };
+    authState = { ...authState, user: { id: "u1" }, loading: false };
 
     const { rerender } = render(
       <DashboardShell>
@@ -131,7 +169,7 @@ describe("DashboardShell — el árbol sobrevive a las transiciones de auth", ()
     // arrives and `user` drops to null. The redirect may well fire —
     // that is P0-BUG-03's problem — but the working context must not be
     // destroyed on the way out, because the session often comes back.
-    authState = { user: null, loading: false };
+    authState = { ...authState, user: null, loading: false };
     rerender(
       <DashboardShell>
         <StatefulChild onMount={onMount} />
@@ -145,7 +183,7 @@ describe("DashboardShell — el árbol sobrevive a las transiciones de auth", ()
 
   it("vuelve a mostrar la app sin remontar cuando la sesión se recupera", () => {
     const onMount = vi.fn();
-    authState = { user: { id: "u1" }, loading: false };
+    authState = { ...authState, user: { id: "u1" }, loading: false };
 
     const { rerender } = render(
       <DashboardShell>
@@ -154,14 +192,14 @@ describe("DashboardShell — el árbol sobrevive a las transiciones de auth", ()
     );
     const first = screen.getByTestId("child").textContent;
 
-    authState = { user: null, loading: false };
+    authState = { ...authState, user: null, loading: false };
     rerender(
       <DashboardShell>
         <StatefulChild onMount={onMount} />
       </DashboardShell>,
     );
 
-    authState = { user: { id: "u1" }, loading: false };
+    authState = { ...authState, user: { id: "u1" }, loading: false };
     rerender(
       <DashboardShell>
         <StatefulChild onMount={onMount} />
@@ -173,5 +211,54 @@ describe("DashboardShell — el árbol sobrevive a las transiciones de auth", ()
     expect(onMount).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("child").textContent).toBe(first);
     expect(screen.queryByTestId("session-overlay")).toBeNull();
+  });
+});
+
+describe("DashboardShell — el redirect a /mfa no cuesta el árbol (P0-SEC-09)", () => {
+  it("un owner sin segundo factor va a /mfa y los children siguen montados", async () => {
+    // El redirect es de conveniencia; desmontar para hacerlo tiraría
+    // exactamente el estado que P0-BUG-02 protege — y esta vez sin que
+    // hubiera pasado nada raro con la sesión.
+    authState = {
+      user: { id: "u1" },
+      loading: false,
+      accountRole: "owner",
+      profileLoading: false,
+    };
+    assuranceLevel = "aal1";
+
+    const onMount = vi.fn();
+    render(
+      <DashboardShell>
+        <StatefulChild onMount={onMount} />
+      </DashboardShell>,
+    );
+
+    await vi.waitFor(() => expect(replace).toHaveBeenCalled());
+    expect(String(replace.mock.calls[0][0])).toContain("/mfa");
+    // Uno, no cero y no dos: montado una vez y nunca reconstruido.
+    expect(onMount).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("child")).toBeTruthy();
+  });
+
+  it("a un agent no lo manda a ninguna parte", async () => {
+    // «Un agent no se ve afectado», comprobado en la UI además de en
+    // el servidor.
+    authState = {
+      user: { id: "u1" },
+      loading: false,
+      accountRole: "agent",
+      profileLoading: false,
+    };
+    assuranceLevel = "aal1";
+
+    render(
+      <DashboardShell>
+        <StatefulChild onMount={vi.fn()} />
+      </DashboardShell>,
+    );
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(replace).not.toHaveBeenCalled();
   });
 });

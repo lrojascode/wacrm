@@ -34,8 +34,14 @@ import {
   E2E_PASSWORD,
   USERS,
   type SeedAccount,
+  type SeedRole,
   type SeedUser,
 } from "./fixtures";
+import { readMfaSecrets, writeMfaSecrets } from "./mfa-secrets";
+import { msLeftInWindow, totpCode } from "./totp";
+
+/** Roles cuyas rutas exigen segundo factor (P0-SEC-09). */
+const MFA_ROLES = new Set<SeedRole>(["admin", "owner"]);
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -282,10 +288,79 @@ async function ensureConversations(
   }
 }
 
+/**
+ * Inscribe un segundo factor TOTP a quien administra la cuenta.
+ *
+ * Desde P0-SEC-09 las rutas de configuración exigen aal2, así que un
+ * owner sin factor no podría tocar nada — y la suite dejaría de cubrir
+ * justo lo que el control protege. Se inscribe de verdad, con el mismo
+ * `enroll` + `challengeAndVerify` que usa la página /mfa, porque un
+ * atajo por base de datos probaría un estado que la app nunca produce.
+ *
+ * No puede hacerse con la clave de servicio: inscribir un factor
+ * requiere la sesión del propio usuario. De ahí el login por usuario.
+ *
+ * Los secretos se guardan en un archivo que `loginAs` lee para superar
+ * el reto. Nunca se versiona (.gitignore) y solo describe usuarios de
+ * un stack local.
+ */
+async function ensureMfaFactors(): Promise<void> {
+  const url = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const anonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const secrets: Record<string, string> = readMfaSecrets();
+
+  for (const fixture of USERS) {
+    if (!MFA_ROLES.has(fixture.role)) continue;
+
+    const client = createClient(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { error: signInErr } = await client.auth.signInWithPassword({
+      email: fixture.email,
+      password: E2E_PASSWORD,
+    });
+    if (signInErr) throw new Error(`mfa signin ${fixture.email}: ${signInErr.message}`);
+
+    const { data: existing } = await client.auth.mfa.listFactors();
+    const verified = (existing?.totp ?? []).find((f) => f.status === "verified");
+    if (verified && secrets[fixture.email]) continue;
+
+    // Sin el secreto guardado un factor previo es inservible: no hay
+    // forma de generar su código. Se retira y se inscribe otro.
+    for (const stale of existing?.totp ?? []) {
+      await client.auth.mfa.unenroll({ factorId: stale.id }).catch(() => {});
+    }
+
+    const { data: enrolled, error: enrollErr } = await client.auth.mfa.enroll({
+      factorType: "totp",
+      friendlyName: `e2e-${Date.now()}`,
+    });
+    if (enrollErr || !enrolled) {
+      throw new Error(`mfa enroll ${fixture.email}: ${enrollErr?.message ?? "sin datos"}`);
+    }
+
+    // No verificar a un segundo de que caduque el intervalo: fallaría
+    // una vez de cada treinta, que es la peor clase de test.
+    if (msLeftInWindow() < 2_000) {
+      await new Promise((r) => setTimeout(r, msLeftInWindow() + 250));
+    }
+    const { error: verifyErr } = await client.auth.mfa.challengeAndVerify({
+      factorId: enrolled.id,
+      code: totpCode(enrolled.totp.secret),
+    });
+    if (verifyErr) throw new Error(`mfa verify ${fixture.email}: ${verifyErr.message}`);
+
+    secrets[fixture.email] = enrolled.totp.secret;
+  }
+
+  writeMfaSecrets(secrets);
+}
+
 export async function seed(): Promise<void> {
   const admin = createAdminClient();
   const userIds = await ensureAuthUsers(admin);
   const accountIds = await ensureAccounts(admin, userIds);
   await ensureProfiles(admin, userIds, accountIds);
   await ensureConversations(admin, userIds, accountIds);
+  await ensureMfaFactors();
 }

@@ -350,9 +350,18 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
+#
+# ON for P0-SEC-09. Both flags are needed and they are not the same
+# thing: `enroll_enabled` gates POST /factors (adding an authenticator)
+# and `verify_enabled` gates POST /factors/{id}/verify (using it).
+# With only the first, people could enrol a factor and then be unable
+# to satisfy the challenge — locked out by their own second factor.
+#
+# In production this is Authentication -> Multi-Factor Authentication,
+# per client project. See docs/deploy/coolify.md.
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]

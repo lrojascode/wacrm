@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { AccountThemeSync } from "@/components/layout/account-theme-sync";
 import { CallProvider } from "@/components/calls/call-provider";
+import { useMfaGate } from "@/hooks/use-mfa-gate";
 import { recordAuthTrace } from "@/lib/diagnostics/auth-trace";
 import { buildLoginPath } from "@/lib/auth/next-path";
 
@@ -18,6 +19,12 @@ import { buildLoginPath } from "@/lib/auth/next-path";
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+
+  // Quien administra la cuenta y no tiene segundo factor va a /mfa
+  // (P0-SEC-09). Redirect de conveniencia: el control real devuelve
+  // 403 en la API. No desmonta nada, así que no toca la garantía de
+  // P0-BUG-02 sobre mantener el árbol montado.
+  useMfaGate();
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
   // always visible and this stays at `false` (ignored by the component).

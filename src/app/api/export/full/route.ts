@@ -14,7 +14,7 @@
 
 import { NextResponse } from 'next/server';
 
-import { requireRole, toErrorResponse } from '@/lib/auth/account';
+import { requireFreshAuth, requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { fetchAllPages } from '@/lib/export/paginate';
 import { keysetFilter, type Cursor } from '@/lib/api/v1/pagination';
@@ -24,6 +24,9 @@ const BATCH_SIZE = 50;
 export async function GET() {
   try {
     const ctx = await requireRole('owner');
+    // `reauth`: esto entrega TODO el contenido de la cuenta en un solo
+    // archivo. Es la acción con más alcance del producto (P0-SEC-09).
+    await requireFreshAuth(ctx);
     const admin = supabaseAdmin();
 
     // 1. Pre-fetch ad campaigns mapping for attribution resolution with fetchAllPages
