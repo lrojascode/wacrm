@@ -90,8 +90,10 @@ async function upsertTemplateRow(
 // the account's own WhatsApp business profile.
 //
 // This route also reaches `ensureImageHeaderHandle`, which fetches a
-// caller-supplied URL server-side — the SSRF that P0-SEC-04 closes.
-// Until then, the role check at least stops a `viewer` from reaching it.
+// caller-supplied URL server-side. That fetch is guarded in the helper
+// (P0-SEC-04: https-only, no private/internal hosts, redirects
+// re-validated, body capped at 5 MB); the role check here is the outer
+// layer of the same defence, not a substitute for it.
 export const POST = withRoute({ minRole: 'admin' }, async (ctx, request) => {
   const { supabase, userId, accountId } = ctx;
   try {

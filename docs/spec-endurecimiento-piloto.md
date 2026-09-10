@@ -599,10 +599,30 @@ Las 10 de §1.2, más `whatsapp/config` (ver abajo). Asignación aplicada: `what
 *Aceptación:* enumera `src/app/api/**/route.ts` y falla si alguna no declara rol sin estar en la allowlist justificada.
 *Resultado medido:* pasa con 0 rutas sin declarar. El test se guarda a sí mismo (falla si el barrido devuelve menos de 50 rutas, para que un glob roto no lo vuelva vacuo), exige que cada excepción lleve escrito su mecanismo de autenticación, y detecta entradas muertas en la allowlist.
 
-**P0-SEC-04 — Corregir SSRF y memoria en descarga de imágenes**
-`src/lib/whatsapp/template-header-handle.ts:46,59,63`
-Usar `isDeliverableUrl` de `src/lib/webhooks/ssrf.ts`; exigir `https:`; rechazar por `Content-Length` **antes** de leer el cuerpo; leer en streaming abortando al superar 5 MB; `redirect: 'manual'` con revalidación de cada salto (como `src/lib/webhooks/deliver.ts:124`); timeout.
-*Aceptación:* URL a `169.254.169.254`, `localhost`, `10.0.0.1` y `.internal` → rechazo antes de cualquier conexión; respuesta de 100 MB → aborto sin superar 5 MB de heap; redirección a IP privada → rechazo; se conserva el comportamiento con URLs públicas válidas (los tests de `template-header-handle.test.ts` siguen pasando).
+**P0-SEC-04 — Corregir SSRF y memoria en descarga de imágenes** — ✅ **COMPLETADA** (2026-09-09)
+`src/lib/whatsapp/template-header-handle.ts`, `src/lib/whatsapp/template-header-handle.security.test.ts`.
+*Aceptación:* URL a `169.254.169.254`, `localhost`, `10.0.0.1` y `.internal` → rechazo antes de cualquier conexión; respuesta de 100 MB → aborto sin superar 5 MB de heap; redirección a IP privada → rechazo; se conserva el comportamiento con URLs públicas válidas.
+
+*Alcance confirmado antes de tocar nada:* un barrido de los `fetch` del servidor deja **este como el único con URL del usuario**. Los de `meta-api.ts` y `calls-api.ts` van a `graph.facebook.com`; los de webhooks y automations ya pasan por `isDeliverableUrl`. Queda anotado, sin actuar, `meta-api.ts:1034`: descarga de media desde una URL que da Meta en su respuesta — no la escribe el usuario, pero tampoco la validamos.
+
+*Cuatro controles, en el orden en que actúan:*
+
+1. **`https:` obligatorio y `isDeliverableUrl`**, el mismo guard que ya usaba el envío de webhooks. Rechaza *antes de abrir conexión*, que es la mitad que importa: un rechazo posterior ya ha entregado el ataque, porque el servicio interno recibió la petición y la diferencia entre un error rápido y uno lento es en sí misma una respuesta.
+2. **Redirecciones seguidas a mano**, revalidando cada salto. Sin esto, `redirect` automático deja pasar un primer salto público y un segundo interno — la validación inicial mira el host equivocado.
+3. **`Content-Length` rechazado antes de tocar el cuerpo.**
+4. **Lectura en trozos, abandonada al cruzar los 5 MB.** El límite pasa de *describir* la reserva a *acotarla*.
+
+*Corrección al planteamiento:* el mensaje de error ya no puede decir el tamaño real («es de 6,3 MB»), porque dejamos de leer y nunca llegamos a conocerlo. Dice el límite. Es consecuencia directa de arreglar la memoria, no un descuido.
+
+*Decisión deliberada:* los errores de «dirección privada» y «no resuelve» son **idénticos**. Distinguirlos convertiría el mensaje en un oráculo para mapear la red interna probando nombres.
+
+*Restricción que esto introduce, documentada y no sorteada:* con Supabase autoalojado en una red privada, la URL pública del bucket `chat-media` sería interna y quedaría rechazada. No afecta al modelo objetivo (un proyecto Supabase gestionado por cliente, `https://<ref>.supabase.co`) ni al desarrollo local, donde `WHATSAPP_TEMPLATES_DRY_RUN=true` ni siquiera llega a esta función. No se añade variable de escape: una sería justo el agujero que esto cierra.
+
+*Riesgo residual, heredado del guard y no cerrado aquí:* **DNS rebinding**. `isDeliverableUrl` resuelve el host, pero `fetch` lo resuelve otra vez y no permite fijar la IP en el socket. Cerrarlo exige un agente HTTP propio.
+
+*Resultado medido:* **33 tests** en los dos archivos. **Verificado que detectan el bug: 19 de los 21 casos de seguridad fallan contra la implementación anterior.** Los 2 que pasan en ambos son contrapesos deliberados (una imagen pública válida sigue pasando; y la comparación de mensajes, que era ya idéntica por accidente). La prueba de memoria no mide heap —sería frágil— sino que **cuenta los bytes que el cuerpo llegó a producir**: el código anterior deja `cancelled === false`, es decir, agotó los 100 MB enteros; el nuevo cancela por debajo de 10 MB. `typecheck` 0, `lint` 0 errores / 41 warnings (línea base), **101 archivos / 969 tests**, `build` 98 rutas, **E2E 54/54** (4 saltados por diseño).
+
+*Nota sobre los tests existentes:* el doble de `Response` que usaban exponía solo `ok`, `status`, `headers.get` y `arrayBuffer`. Servía mientras la función leía el cuerpo entero y dejó de modelar la realidad en cuanto pasó a streaming — un doble sin `body` no puede mostrar si la lectura está acotada. Se sustituye por un `Response` real. El guard SSRF se deja abierto en ese archivo (resuelve DNS de verdad) y se ejercita real en el archivo de seguridad: un archivo por pregunta.
 
 **P0-SEC-05 — Revocar EXECUTE a PUBLIC** *(migración 052, ver §7)*
 *Aceptación:* con la clave `anon`, `POST /rest/v1/rpc/claim_ai_reply_slot` devuelve 401/403; ídem `touch_presence` y `record_webhook_failure` desde `anon`; el bot de auto-respuesta (service_role) y la presencia autenticada siguen funcionando; una consulta a `pg_proc` no devuelve ninguna función `SECURITY DEFINER` con `EXECUTE` para `PUBLIC`.

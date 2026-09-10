@@ -45,8 +45,9 @@ function isDryRun(): boolean {
 }
 
 // `admin`, same as submit: editing a template re-submits it to Meta,
-// and this handler also reaches the SSRF surface in
-// `ensureImageHeaderHandle` (closed by P0-SEC-04).
+// and this handler also reaches the header-image fetch in
+// `ensureImageHeaderHandle`, guarded against SSRF and oversized bodies
+// inside the helper (P0-SEC-04).
 export const PATCH = withRoute(
   { minRole: 'admin' },
   async (ctx, request, context: { params: Promise<{ id: string }> }) => {

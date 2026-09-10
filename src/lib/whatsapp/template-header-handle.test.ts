@@ -5,6 +5,16 @@ vi.mock('./meta-api', () => ({
   uploadResumableMedia: vi.fn(async () => ({ handle: 'HANDLE123' })),
 }));
 
+// The SSRF guard resolves DNS for real (P0-SEC-04). These tests are
+// about the *rest* of the contract, so the guard is held open here and
+// exercised for real in template-header-handle.security.test.ts. Held
+// open rather than removed: if the helper ever stops consulting it, the
+// security file fails and this one keeps passing, which is the split we
+// want — one file per question.
+vi.mock('@/lib/webhooks/ssrf', () => ({
+  isDeliverableUrl: vi.fn(async () => true),
+}));
+
 import { ensureImageHeaderHandle } from './template-header-handle';
 import { uploadResumableMedia } from './meta-api';
 import type { TemplatePayload } from './template-validators';
@@ -21,13 +31,21 @@ function payload(over: Partial<TemplatePayload> = {}): TemplatePayload {
   };
 }
 
-function imgResponse(type = 'image/jpeg', size = 1024, ok = true, status = 200): Response {
-  return {
-    ok,
+/**
+ * A real `Response`, not a hand-rolled stand-in.
+ *
+ * The previous double exposed only `ok`, `status`, `headers.get` and
+ * `arrayBuffer`. That was enough while the helper buffered the whole
+ * body, and it silently stopped modelling reality once the helper
+ * started streaming: a double with no `body` cannot show whether the
+ * read is capped. Constructing the genuine article keeps the fixture
+ * honest for free.
+ */
+function imgResponse(type = 'image/jpeg', size = 1024, status = 200): Response {
+  return new Response(new Uint8Array(size), {
     status,
-    headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? type : null) },
-    arrayBuffer: async () => new ArrayBuffer(size),
-  } as unknown as Response;
+    headers: { 'content-type': type },
+  });
 }
 
 describe('ensureImageHeaderHandle', () => {
@@ -67,6 +85,33 @@ describe('ensureImageHeaderHandle', () => {
     expect(p.header_handle).toBe('HANDLE123');
   });
 
+  it('forwards the exact bytes it read', async () => {
+    // The streaming reader reassembles chunks by hand; an off-by-one in
+    // the offset arithmetic would still produce a plausible-looking
+    // buffer of the right length.
+    vi.stubEnv('META_APP_ID', 'app-1');
+    const source = new Uint8Array([1, 2, 3, 4, 5, 250, 251, 252]);
+    const chunked = new ReadableStream<Uint8Array>({
+      start(controller) {
+        // Split across chunks on purpose: a single-chunk body would not
+        // exercise the reassembly at all.
+        controller.enqueue(source.slice(0, 3));
+        controller.enqueue(source.slice(3, 5));
+        controller.enqueue(source.slice(5));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(chunked, { headers: { 'content-type': 'image/png' } })),
+    );
+
+    await ensureImageHeaderHandle(payload(), 'tok');
+
+    const sent = vi.mocked(uploadResumableMedia).mock.calls[0][0].bytes;
+    expect(Array.from(sent)).toEqual(Array.from(source));
+  });
+
   it('rejects a non-image content type', async () => {
     vi.stubEnv('META_APP_ID', 'app-1');
     vi.stubGlobal('fetch', vi.fn(async () => imgResponse('text/html')));
@@ -77,6 +122,18 @@ describe('ensureImageHeaderHandle', () => {
     vi.stubEnv('META_APP_ID', 'app-1');
     vi.stubGlobal('fetch', vi.fn(async () => imgResponse('image/png', 6 * 1024 * 1024)));
     await expect(ensureImageHeaderHandle(payload(), 'tok')).rejects.toThrow(/5 MB/);
+  });
+
+  it('rejects an empty body', async () => {
+    vi.stubEnv('META_APP_ID', 'app-1');
+    vi.stubGlobal('fetch', vi.fn(async () => imgResponse('image/jpeg', 0)));
+    await expect(ensureImageHeaderHandle(payload(), 'tok')).rejects.toThrow(/empty/);
+  });
+
+  it('surfaces a non-OK response', async () => {
+    vi.stubEnv('META_APP_ID', 'app-1');
+    vi.stubGlobal('fetch', vi.fn(async () => imgResponse('image/jpeg', 10, 404)));
+    await expect(ensureImageHeaderHandle(payload(), 'tok')).rejects.toThrow(/returned 404/);
   });
 
   it('uses the account’s own app id when given, without needing META_APP_ID set', async () => {
