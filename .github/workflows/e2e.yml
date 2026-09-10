@@ -36,7 +36,22 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # Node 24, no 20.
+          #
+          # `@supabase/realtime-js` necesita `WebSocket` nativo, que Node
+          # no expone como global hasta la 22. En la 20 el seed ni
+          # arranca: `createClient` revienta dentro de globalSetup con
+          # «Node.js 20 detected without native WebSocket support», antes
+          # del primer test.
+          #
+          # (En ci.yml la razón es otra —jsdom@30 y markAsUncloneable—,
+          # pero el remedio es el mismo. Se anotan por separado para que
+          # quien toque una versión sepa qué se rompe en cada sitio.)
+          #
+          # El runtime de la app NO necesita esto: Next se conforma con
+          # >=20.9.0 y el navegador trae su propio WebSocket. Es
+          # requisito del banco de pruebas, no del despliegue.
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies

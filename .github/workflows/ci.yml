@@ -36,7 +36,20 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # Node 24, no 20.
+          #
+          # Los tests de componentes corren en jsdom, y jsdom@30 exige
+          # `^22.22.2 || ^24.15.0` — su undici llama a
+          # `worker_threads.markAsUncloneable`, que no existe en Node 20.
+          # En Node 20 el worker de vitest ni arranca: los .test.tsx no
+          # fallan, se caen antes de empezar, y el resto de la suite pasa
+          # tan tranquila. Pasó desapercibido porque en local se corre
+          # con Node 24.
+          #
+          # El runtime de la app NO necesita esto: jsdom es solo una
+          # dependencia de desarrollo y Next se conforma con >=20.9.0.
+          # Es requisito del banco de pruebas, no del despliegue.
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -70,7 +83,20 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # Node 24, no 20.
+          #
+          # Los tests de componentes corren en jsdom, y jsdom@30 exige
+          # `^22.22.2 || ^24.15.0` — su undici llama a
+          # `worker_threads.markAsUncloneable`, que no existe en Node 20.
+          # En Node 20 el worker de vitest ni arranca: los .test.tsx no
+          # fallan, se caen antes de empezar, y el resto de la suite pasa
+          # tan tranquila. Pasó desapercibido porque en local se corre
+          # con Node 24.
+          #
+          # El runtime de la app NO necesita esto: jsdom es solo una
+          # dependencia de desarrollo y Next se conforma con >=20.9.0.
+          # Es requisito del banco de pruebas, no del despliegue.
+          node-version: 24
           cache: pnpm
 
       # `--frozen-lockfile`: la auditoría tiene que mirar el árbol que se
