@@ -109,6 +109,56 @@ CAVEAT
     echo ""
     cat "$file"
   done
+  # ----------------------------------------------------------
+  # Registro de aplicación (P0-SEC-07).
+  #
+  # Va al FINAL a propósito: si el editor de Supabase corta el script
+  # a la mitad —cosa que pasa, y por eso el README explica cómo
+  # correrlo por tramos— la fila no se escribe, y `check-applied.sql`
+  # enseña "el objeto está pero nadie lo registró". Registrar al
+  # principio habría dado por bueno un bundle a medio aplicar, que es
+  # exactamente el estado que este registro existe para detectar.
+  #
+  # La tabla se crea aquí si falta, en vez de depender de que la 053
+  # se haya corrido antes: los bundles se aplican en el orden que le
+  # convenga a cada proyecto, y un registro que solo funciona si
+  # alguien recordó un paso previo no es un registro.
+  # ----------------------------------------------------------
+  echo ""
+  echo "-- ############################################################"
+  echo "-- ##  REGISTRO DE APLICACION  (P0-SEC-07)"
+  echo "-- ############################################################"
+  echo ""
+  cat <<'LEDGER'
+-- Deja constancia de que este bundle se aplicó, para que
+-- docs/deploy/check-applied.sql pueda responder "que le falta a este
+-- proyecto" sin deducirlo del esquema.
+--
+-- Una fila por MIGRACION, no por bundle: los bundles se solapan
+-- (full-install contiene todas), asi que registrar por archivo haria
+-- imposible saber si una migracion concreta esta puesta.
+--
+-- ON CONFLICT DO NOTHING: reejecutar no duplica filas ni reescribe la
+-- fecha. La primera aplicacion es el dato con valor; la repeticion no.
+CREATE TABLE IF NOT EXISTS public.schema_release (
+  version TEXT PRIMARY KEY,
+  bundle TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  applied_by TEXT NOT NULL DEFAULT current_user
+);
+ALTER TABLE public.schema_release ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.schema_release FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.schema_release TO service_role;
+
+LEDGER
+  echo "INSERT INTO public.schema_release (version, bundle) VALUES"
+  for i in "${!MIGRATIONS[@]}"; do
+    sep=","
+    if [ "$i" -eq $(( ${#MIGRATIONS[@]} - 1 )) ]; then sep=""; fi
+    echo "  ('${MIGRATIONS[$i]}', '$OUT')$sep"
+  done
+  echo "ON CONFLICT (version) DO NOTHING;"
+
 # Apostrophes in `--` comments are legal SQL but break the Supabase SQL
 # Editor's client-side statement splitter — see sanitize-comments.py.
 } | python3 "$SANITIZE" > "$OUT"

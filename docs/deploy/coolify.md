@@ -22,8 +22,18 @@ En el editor SQL de cada proyecto de cliente:
 -- pega docs/deploy/check-applied.sql
 ```
 
-Cada fila debe decir `APPLIED`. Anota las que digan `MISSING` — esas son las
-que tienes que correr, y solo esas.
+Cada fila debe decir `APPLIED`, y desde la migración 053 trae además una
+columna `registro` que dice si alguien anotó ese bundle al aplicarlo.
+Anota las que digan `MISSING` — esas son las que tienes que correr, y
+solo esas.
+
+> **`MISSING` + `registrado` es el peor caso y el que hay que mirar
+> primero.** Significa que alguien dio ese bundle por aplicado y no lo
+> está: casi siempre, el editor de Supabase cortó el script a la mitad.
+> Vuelve a correrlo entero, por tramos si hace falta.
+>
+> **`APPLIED` + `sin registrar`** es normal en proyectos anteriores al
+> registro y no requiere nada.
 
 **Excepción conocida:** `047 owner-only settings` sale `MISSING` en local tras
 un `supabase db reset` aunque la migración corriera. Es un artefacto del stack

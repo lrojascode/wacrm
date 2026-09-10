@@ -10,8 +10,40 @@
 -- Paste this into Supabase Cloud -> SQL Editor and run it. Every row
 -- should read APPLIED before you redeploy the matching code.
 --
--- Read-only: it inspects catalogs and changes nothing.
+-- DOS COLUMNAS, DOS PREGUNTAS DISTINTAS (P0-SEC-07)
+--
+--   status    -- que hay REALMENTE en el esquema, mirando el catalogo
+--   registro  -- que dice el registro que alguien aplico
+--
+-- Se ensenan juntas porque lo interesante es cuando NO coinciden:
+--
+--   APPLIED + sin registrar  El objeto esta pero nadie anoto el bundle.
+--                            Normal en proyectos anteriores al registro
+--                            (la 053 rellena lo que puede comprobar).
+--                            En un proyecto reciente significa que el
+--                            editor corto el script antes del final.
+--
+--   MISSING + registrado     El peor caso, y el que este cruce existe
+--                            para cazar: alguien lo dio por aplicado y
+--                            no lo esta. Un script cortado a la mitad
+--                            deja justo esto.
+--
+-- Casi read-only: crea `schema_release` si falta, porque un proyecto
+-- anterior a la 053 no la tiene y sin ella este script no correria.
+-- Crear una tabla de metadatos vacia es inocuo; no toca ningun dato.
 -- ============================================================
+
+-- El arranque del propio registro. Identico al bloque que lleva cada
+-- bundle al final.
+CREATE TABLE IF NOT EXISTS public.schema_release (
+  version TEXT PRIMARY KEY,
+  bundle TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  applied_by TEXT NOT NULL DEFAULT current_user
+);
+ALTER TABLE public.schema_release ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.schema_release FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.schema_release TO service_role;
 
 WITH checks AS (
   SELECT
@@ -220,11 +252,30 @@ WITH checks AS (
     'docs/deploy/revoke-public-execute.sql'
 )
 SELECT
-  release,
-  CASE WHEN ok THEN 'APPLIED' ELSE 'MISSING -> run the bundle' END AS status,
-  bundle
-FROM checks
-ORDER BY release;
+  c.release,
+  CASE WHEN c.ok THEN 'APPLIED' ELSE 'MISSING -> run the bundle' END AS status,
+  CASE
+    WHEN r.version IS NOT NULL
+      THEN 'registrado ' || to_char(r.applied_at, 'YYYY-MM-DD')
+    WHEN c.ok THEN 'sin registrar'
+    ELSE '-'
+  END AS registro,
+  c.bundle
+FROM checks c
+-- El numero al principio del nombre de la fila ('052 revoke ...') es la
+-- version, que es como se registra cada migracion.
+LEFT JOIN public.schema_release r
+  ON r.version = substring(c.release from '^[0-9]{3}')
+ORDER BY c.release;
+
+-- ============================================================
+-- Y el registro completo, incluidas las migraciones que este script no
+-- comprueba una por una. Si esta vacio en un proyecto vivo, es que
+-- nunca se aplico un bundle desde que existe el registro.
+-- ============================================================
+SELECT version, bundle, to_char(applied_at, 'YYYY-MM-DD HH24:MI') AS applied_at, applied_by
+FROM public.schema_release
+ORDER BY version;
 
 -- ============================================================
 -- APPLIED IS NOT THE SAME AS WORKING -- the one manual check

@@ -31,6 +31,31 @@ Se corre **una vez**, antes de desplegar el código de la aplicación.
 
 Después, `check-applied.sql` debe reportar todas las filas como `APPLIED`.
 
+### El registro de aplicación
+
+Desde la migración 053 **cada bundle deja constancia de haberse
+aplicado** en la tabla `schema_release`, una fila por migración. Ya no
+hay que deducir del esquema qué le falta a un proyecto: se pregunta.
+
+`check-applied.sql` muestra las dos cosas juntas, y lo interesante es
+cuándo **no** coinciden:
+
+| `status` | `registro` | Qué significa |
+|---|---|---|
+| APPLIED | registrado | Todo en orden. |
+| APPLIED | sin registrar | El objeto está pero nadie anotó el bundle. Normal en proyectos anteriores a la 053 — el relleno retroactivo solo registra lo que puede comprobar. En uno reciente, significa que el editor cortó el script antes del final. |
+| MISSING | registrado | **El caso que este cruce existe para cazar.** Alguien lo dio por aplicado y no lo está: un script cortado a la mitad deja exactamente esto. |
+
+El bloque de registro va al **final** de cada bundle a propósito. Si el
+editor de Supabase corta el script —pasa, y por eso más abajo se
+explica cómo correrlo por tramos— la fila no se escribe, y la
+discrepancia salta. Registrar al principio habría dado por bueno un
+bundle a medio aplicar.
+
+Reaplicar un bundle no duplica filas ni reescribe la fecha
+(`ON CONFLICT DO NOTHING`): la primera aplicación es el dato con valor
+forense, la repetición no.
+
 > **Pesa ~305 KB.** Si el editor de Supabase se atraganta o reporta un error
 > de sintaxis que no tiene sentido, no es el SQL: es su separador de
 > sentencias del lado del cliente. Cada migración empieza con un banner
@@ -41,7 +66,8 @@ Después, `check-applied.sql` debe reportar todas las filas como `APPLIED`.
 
 `owner-only-settings.sql`, `brand-display.sql`, `contact-tasks.sql`,
 `calls.sql`, `account-appearance.sql`, `ads-attribution.sql`,
-`revoke-public-execute.sql`, etc. Cada uno cubre una entrega concreta.
+`revoke-public-execute.sql`, `schema-release.sql`, etc. Cada uno cubre una
+entrega concreta, y todos registran su paso en `schema_release`.
 
 > **`revoke-public-execute.sql` (052) no es una mejora, es un parche de
 > seguridad.** Hasta aplicarlo, once funciones `SECURITY DEFINER` —que se
@@ -57,7 +83,7 @@ imposible de responder. `full-install.sql` no los reemplaza — resuelve un
 problema distinto (empezar de cero, donde no hay historial que consultar).
 
 **No corras `full-install.sql` sobre una base en producción** para "ponerla al
-día". Es idempotente y no destruye datos, pero reejecuta 52 migraciones
+día". Es idempotente y no destruye datos, pero reejecuta 53 migraciones
 enteras —incluidos rehacer políticas y restricciones— cuando lo que
 necesitas son las dos que faltan. Usa `check-applied.sql` para saber cuáles
 son y corre solo esos bundles.

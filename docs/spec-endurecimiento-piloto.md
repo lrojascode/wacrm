@@ -697,9 +697,29 @@ La 034 hace lo que promete. Los dos últimos son contrapesos deliberados: un tri
 
 *Nota menor:* el spec de ataque no usa navegador, pero Playwright lo corre igual en los dos proyectos (`desktop-chromium` y `mobile-safari`). Cuesta ~2 s y evita configuración extra; se deja así a sabiendas.
 
-**P0-SEC-07 — Registro de migraciones aplicadas** *(cierra §1.3 punto 3)*
-Nueva tabla `schema_release` + bloque de registro al final de cada bundle de `docs/deploy/`.
+**P0-SEC-07 — Registro de migraciones aplicadas** — ✅ **COMPLETADA** (2026-09-10) *(cierra §1.3 punto 3)*
+`supabase/migrations/053_schema_release.sql`, `scripts/deploy/bundle-migrations.sh`, los 15 bundles de `docs/deploy/`, `docs/deploy/check-applied.sql`, `src/lib/deploy/bundles.test.ts`.
 *Aceptación:* cada bundle registra su versión al aplicarse; `check-applied.sql` la lee; aplicar dos veces el mismo bundle es idempotente y no duplica filas.
+
+*Por qué esto era el arreglo de raíz.* Sin runner de migraciones, la única forma de responder «¿qué le falta a este cliente?» era deducirlo del esquema — y deducir tiene un punto ciego: solo ve lo que dejó rastro. Ese punto ciego ya había costado dos hallazgos reales en esta misma tanda (P0-SEC-06): la 034 no tenía bundle propio, así que un proyecto migrado release a release podía no tenerla, y `check-applied.sql` ni siquiera la miraba.
+
+*Una fila por MIGRACIÓN, no por bundle.* Los bundles se solapan a propósito —`full-install.sql` contiene las 53, `inbox-dedup.sql` de la 022 a la 036— así que registrar por archivo haría imposible responder «¿tiene la 034?» sin saberse de memoria qué contiene cada uno. Por migración, los dos caminos convergen en el mismo hecho.
+
+*El bloque va al FINAL de cada bundle, y es la decisión que más rinde.* Si el editor de Supabase corta el script —cosa que pasa, y por eso el README explica cómo correrlo por tramos— la fila no se escribe. Eso convierte un fallo silencioso en una discrepancia visible. Registrar al principio habría dado por bueno un bundle a medio aplicar, que es exactamente el estado que este registro existe para detectar.
+
+*Lo que de verdad aporta `check-applied.sql` ahora son dos columnas juntas:* `status` (qué hay en el catálogo) y `registro` (qué dice que alguien aplicó). Lo interesante es cuando **no** coinciden. `MISSING + registrado` es el peor caso y el que este cruce existe para cazar: alguien lo dio por aplicado y no lo está.
+
+*El registro no sustituye a mirar el esquema*, y la migración lo dice explícitamente: es lo que alguien DIJO que corrió; el catálogo es la verdad de lo que hay.
+
+*Relleno retroactivo honesto.* Un proyecto ya al día no debe aparecer como si no tuviera nada — sería ruido desde el primer día y nadie volvería a mirarlo. La 053 registra cada migración **cuya huella puede comprobar en el catálogo**; si el objeto no está, la fila no se escribe. En el stack local rellenó 12 de las 53, incluida la 052, que se detecta por una ausencia (ninguna función `SECURITY DEFINER` con EXECUTE para PUBLIC).
+
+*La tabla es metadato, no datos de inquilino:* RLS activada sin políticas y `REVOKE` explícito a `anon`/`authenticated` — enumerar qué parches lleva un proyecto es justo lo que ayuda a quien busca uno que falte. Mismo criterio que la 052.
+
+*Guard mecánico, el tercero de la tanda.* `bundles.test.ts` comprueba sobre el TEXTO de los bundles —que es lo que se pega en el editor, no sobre el generador, porque los dos bundles escritos a mano no pasan por él— que todos crean la tabla, registran al menos una versión, usan `ON CONFLICT DO NOTHING`, ponen el bloque en el último tercio del archivo, y que ninguna versión registrada falta en `supabase/migrations/`. **Verificado que detecta el fallo:** quitando el bloque de `calls.sql` fallan 3 de sus 6 casos.
+
+*Una corrección a mi propio test:* la comprobación de posición buscaba la PRIMERA aparición del INSERT, y marcaba como infractor al bundle de la propia 053 — cuyo relleno retroactivo también inserta en la tabla, antes. La posición correcta es la de la última.
+
+*Resultado medido:* 53 versiones registradas al aplicar `full-install.sql` sobre un registro vacío, y **53 seguidas tras reaplicarlo**. Un bundle suelto (`calls.sql`) aplicado dos veces: una fila, y `applied_at` conserva la fecha de la primera. `db reset` completo desde cero deja el registro coherente. `typecheck` 0, `lint` 0 errores / 41 warnings, **105 archivos / 1029 tests**, `build` 100 rutas, **E2E 94/94**.
 
 **P0-SEC-08 — Cerrar el alta pública** — ✅ **COMPLETADA** (2026-09-10)
 `supabase/config.toml`, `src/app/api/invitations/[token]/claim/route.ts`, `src/app/(auth)/signup/page.tsx`, `src/app/(auth)/login/page.tsx`, `src/lib/auth/account.ts`, `src/proxy.ts`, `e2e/invitation-only.spec.ts`.
@@ -841,17 +861,18 @@ Numeración a partir de la 051 (última existente). Toda migración: idempotente
 Cubre las **23** funciones `SECURITY DEFINER` del esquema, no las cinco que listaba el plan: revoca `PUBLIC`/`anon`/`authenticated` y concede nominalmente el único rol que llama a cada una. Bundle en `docs/deploy/revoke-public-execute.sql`; `check-applied.sql` incorpora la consulta de aceptación sobre `pg_proc` (la única fila del script que comprueba una **ausencia**, y `MISSING` ahí significa «ese proyecto está expuesto ahora mismo»). `full-install.sql` regenerado para que una instalación nueva no nazca vulnerable.
 **Riesgo R2 cerrado:** ambos flujos verificados con JWT reales — auto-respuesta y `record_webhook_failure` con `service_role`, presencia y tareas con `authenticated`. Los cuatro triggers `SECURITY DEFINER` se ejercitaron uno a uno tras la revocación.
 
-**053 — `job_queue.sql`** *(P1-QUEUE-01)*
+**053 — `schema_release.sql`** *(P0-SEC-07)* — ✅ **APLICADA**
+Registro de migraciones aplicadas, una fila por migración; cada bundle de `docs/deploy/` lo rellena al final con `ON CONFLICT DO NOTHING`. Ver la tarea en §5.
+*El plan la había puesto en la 056, detrás de la cola y los adjuntos.* Se adelantó al ejecutarse P0-SEC-07 antes que P1, y es donde debía estar: las migraciones que vinieran después se registran solas desde el primer día, en vez de tener que rellenarlas hacia atrás.
+
+**054 — `job_queue.sql`** *(P1-QUEUE-01)* *(era 053; la 053 se la llevó P0-SEC-07, que se ejecutó antes)*
 Tabla con `id`, `account_id`, `type`, `payload jsonb`, `status` (`pending|running|done|failed|dead`), `attempts`, `max_attempts`, `run_at`, `locked_until`, `locked_by`, `idempotency_key`, `last_error`, `created_at`, `updated_at`. Índice parcial único sobre `idempotency_key WHERE idempotency_key IS NOT NULL`. Índice de claim sobre `(status, run_at)` filtrado a `pending`. RLS: lectura para miembros de la cuenta; escritura solo `service_role`.
 
-**054 — `private_attachments.sql`** *(P1-STOR-01)*
+**055 — `private_attachments.sql`** *(P1-STOR-01)*
 `chat-media` a `public = false`; reemplazar la política de `023:79-86` por una que exija pertenencia a la cuenta; añadir columnas de retención. Requiere resolver D-3. **Cambio de datos:** las URLs públicas ya almacenadas en filas de mensajes dejan de resolver — se necesita backfill que las convierta a rutas relativas resueltas en el momento de la lectura.
 
-**055 — `flags_and_audit.sql`** *(P1-OBS-02)*
+**056 — `flags_and_audit.sql`** *(P1-OBS-02)*
 `module_flags` (`account_id`, `module`, `enabled`, `updated_by`, `updated_at`) y `audit_log` (`account_id`, `actor_user_id`, `action`, `resource_type`, `resource_id`, `result`, `metadata jsonb`, `created_at`, particionada por mes). RLS: `audit_log` legible por admin+ de la cuenta, escribible solo por `service_role`.
-
-**056 — `schema_release.sql`** *(P0-SEC-07)*
-Tabla `schema_release(version text primary key, applied_at timestamptz default now(), applied_by text)`. Cada bundle de `docs/deploy/` termina con su `INSERT ... ON CONFLICT DO NOTHING`.
 
 **Cambios de datos sin migración de esquema:**
 - Re-cifrado de secretos al keyset versionado (P1-KEY-02), en segundo plano, reversible mientras la clave antigua siga en el keyset.
@@ -948,7 +969,7 @@ Ante una incidencia en un módulo, la primera acción es **apagar ese módulo po
 | R3 | Pasar `chat-media` a privado rompe el fetch de Meta | **Alta** | Alto | **Decisión abierta D-3.** Prototipar antes de comprometer la 054 |
 | R4 | El estado del bug no se reproduce en staging y P0-BUG-01 no captura nada | Media | Medio | Las correcciones A/C/D son deterministas y valen por sí solas; solo B depende del diagnóstico, y su fix (confirmar antes de actuar) es correcto en cualquier caso |
 | R5 | El re-cifrado de claves deja secretos ilegibles | Baja | **Crítico** | La clave antigua permanece en el keyset; job reversible; ensayar en staging con datos reales copiados |
-| R6 | Sin runner de migraciones, los clientes divergen durante la ejecución del plan | **Alta** | Alto | P0-SEC-07 es prerrequisito operativo del primer alta de cliente nuevo |
+| R6 | ~~Sin runner de migraciones, los clientes divergen durante la ejecución del plan~~ **Mitigado** | Media | Medio | La 053 registra qué se aplicó en cada proyecto y `check-applied.sql` cruza registro contra catálogo, así que una divergencia ahora se ve. Sigue sin haber runner: el registro detecta, no previene. |
 | R7 | Purga de retención borra datos que un cliente esperaba conservar | Media | Alto | Modo informe primero; revisión por cliente; consentimiento explícito antes de habilitar borrado |
 | R8 | La migración de broadcasts a cola cambia el comportamiento percibido (ya no hay barra de progreso en vivo) | Media | Medio | Progreso por realtime desde la BD; comunicar el cambio como mejora ("sigue enviando aunque cierres") |
 

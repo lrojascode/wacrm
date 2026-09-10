@@ -1,5 +1,5 @@
 -- ============================================================
--- CRM — per-account branding (logo and name)
+-- CRM — branding
 -- Migration 043.
 --
 -- GENERATED FILE — do not edit. Regenerate with:
@@ -216,3 +216,31 @@ CREATE POLICY "Admins can delete brand assets"
 -- just closes the window in the common case.
 -- ============================================================
 NOTIFY pgrst, 'reload schema';
+
+-- ############################################################
+-- ##  REGISTRO DE APLICACION  (P0-SEC-07)
+-- ############################################################
+
+-- Deja constancia de que este bundle se aplicó, para que
+-- docs/deploy/check-applied.sql pueda responder "que le falta a este
+-- proyecto" sin deducirlo del esquema.
+--
+-- Una fila por MIGRACION, no por bundle: los bundles se solapan
+-- (full-install contiene todas), asi que registrar por archivo haria
+-- imposible saber si una migracion concreta esta puesta.
+--
+-- ON CONFLICT DO NOTHING: reejecutar no duplica filas ni reescribe la
+-- fecha. La primera aplicacion es el dato con valor; la repeticion no.
+CREATE TABLE IF NOT EXISTS public.schema_release (
+  version TEXT PRIMARY KEY,
+  bundle TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  applied_by TEXT NOT NULL DEFAULT current_user
+);
+ALTER TABLE public.schema_release ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.schema_release FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.schema_release TO service_role;
+
+INSERT INTO public.schema_release (version, bundle) VALUES
+  ('043', 'docs/deploy/branding.sql')
+ON CONFLICT (version) DO NOTHING;

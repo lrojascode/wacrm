@@ -75,3 +75,34 @@ CREATE TRIGGER enforce_profile_privilege_columns
 -- docs/deploy/check-applied.sql carries the copy-pasteable curl for
 -- step 1, and docs/deploy/coolify.md places it in the deploy order.
 -- ============================================================
+
+
+-- ############################################################
+-- ##  REGISTRO DE APLICACION  (P0-SEC-07)
+-- ############################################################
+
+-- Deja constancia de que este bundle se aplico, para que
+-- docs/deploy/check-applied.sql pueda responder "que le falta a este
+-- proyecto" sin deducirlo del esquema.
+--
+-- Va al FINAL a proposito: si el editor de Supabase corta el script a
+-- la mitad, la fila no se escribe y check-applied ensena "el objeto
+-- esta pero nadie lo registro". Registrar al principio daria por bueno
+-- un bundle a medio aplicar.
+--
+-- La tabla se crea aqui si falta, en vez de depender de que la 053 se
+-- haya corrido antes: los bundles se aplican en el orden que le
+-- convenga a cada proyecto.
+CREATE TABLE IF NOT EXISTS public.schema_release (
+  version TEXT PRIMARY KEY,
+  bundle TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  applied_by TEXT NOT NULL DEFAULT current_user
+);
+ALTER TABLE public.schema_release ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.schema_release FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.schema_release TO service_role;
+
+INSERT INTO public.schema_release (version, bundle) VALUES
+  ('034', 'docs/deploy/profile-privilege-columns.sql')
+ON CONFLICT (version) DO NOTHING;
