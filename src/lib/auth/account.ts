@@ -31,8 +31,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import {
   deriveMfaStatus,
+  hasEnrolledFactor,
   isReauthFresh,
-  routeRequiresMfa,
   type MfaStatus,
 } from "./mfa";
 import { hasMinRole, isAccountRole, type AccountRole } from "./roles";
@@ -309,6 +309,20 @@ export async function readAssurance(
  * (P0-SEC-09). Para acciones irreversibles o que entregan un secreto.
  */
 export async function requireFreshAuth(ctx: AccountContext): Promise<void> {
+  // Solo tiene sentido pedírselo a quien puede cumplirlo.
+  //
+  // Con el segundo factor activado, reautenticarse es teclear seis
+  // dígitos otra vez. Sin él, la única forma de refrescar `amr` sería
+  // cerrar sesión y volver a entrar — así que exigirlo dejaría la
+  // exportación completa y la creación de API keys inservibles para
+  // cualquiera cuya sesión pasara de cinco minutos, que es casi
+  // siempre.
+  //
+  // Es la consecuencia honesta de que el segundo factor sea opcional:
+  // esta protección la tiene quien lo activa. Conviene decirlo en vez
+  // de aparentar que cubre a todo el mundo.
+  if (!hasEnrolledFactor(ctx.factors)) return;
+
   const { amr } = await readAssurance(ctx);
   if (!isReauthFresh(amr)) throw new ReauthRequiredError();
 }
@@ -343,7 +357,14 @@ export async function requireRole(min: AccountRole): Promise<AccountContext> {
   // (`supabase.auth.mfa.enroll`), sin pasar por ninguna ruta de esta
   // app. El punto muerto —inscribir es configuración, la configuración
   // pide aal2, aal2 exige haber inscrito— sencillamente no existe.
-  if (routeRequiresMfa(min)) {
+  // Segundo factor: OPCIONAL, y solo se exige a quien lo activó.
+  //
+  // Nadie queda fuera por no tenerlo. Quien sí lo activó tiene que
+  // usarlo, que es lo que hace que activarlo signifique algo.
+  //
+  // Se consulta el token solo si hay factor: sin él no hay nada que
+  // comprobar y sería una ida y vuelta por petición a cambio de nada.
+  if (hasEnrolledFactor(ctx.factors)) {
     const assurance = await readAssurance(ctx);
     // Se guarda para que una acción crítica (`reauth`) no vuelva a
     // pedir las mismas claims en la misma petición.

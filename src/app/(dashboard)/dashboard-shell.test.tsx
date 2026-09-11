@@ -49,13 +49,18 @@ vi.mock("next/navigation", () => ({
 // respondiendo a su pregunta con el shell completo: si el redirect a
 // /mfa desmontara el árbol, sería el mismo bug que P0-BUG-02 arregló,
 // entrando por otra puerta.
-let assuranceLevel = "aal2";
+// `currentLevel` es dónde está la sesión; `nextLevel` es 'aal2'
+// exactamente cuando la persona tiene un factor verificado. Se separan
+// porque el segundo factor pasó a ser OPCIONAL: sin factor no hay
+// redirect, y eso solo se puede distinguir mirando `nextLevel`.
+let currentLevel = "aal2";
+let nextLevel = "aal2";
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
     auth: {
       mfa: {
         getAuthenticatorAssuranceLevel: async () => ({
-          data: { currentLevel: assuranceLevel, nextLevel: assuranceLevel },
+          data: { currentLevel, nextLevel },
           error: null,
         }),
       },
@@ -107,7 +112,8 @@ describe("DashboardShell — el árbol sobrevive a las transiciones de auth", ()
       accountRole: "agent",
       profileLoading: false,
     };
-    assuranceLevel = "aal2";
+    currentLevel = "aal2";
+    nextLevel = "aal2";
     replace.mockClear();
     push.mockClear();
   });
@@ -214,18 +220,43 @@ describe("DashboardShell — el árbol sobrevive a las transiciones de auth", ()
   });
 });
 
-describe("DashboardShell — el redirect a /mfa no cuesta el árbol (P0-SEC-09)", () => {
-  it("un owner sin segundo factor va a /mfa y los children siguen montados", async () => {
-    // El redirect es de conveniencia; desmontar para hacerlo tiraría
-    // exactamente el estado que P0-BUG-02 protege — y esta vez sin que
-    // hubiera pasado nada raro con la sesión.
+describe("DashboardShell — el segundo factor es opcional (P0-SEC-09)", () => {
+  it("un owner SIN segundo factor no va a ninguna parte", async () => {
+    // El cambio que importa. La primera versión lo mandaba a /mfa y lo
+    // dejaba delante de un QR sin más salida que escanearlo: el día del
+    // despliegue eso bloqueó al owner del proyecto.
     authState = {
       user: { id: "u1" },
       loading: false,
       accountRole: "owner",
       profileLoading: false,
     };
-    assuranceLevel = "aal1";
+    currentLevel = "aal1";
+    nextLevel = "aal1"; // sin factor verificado
+
+    render(
+      <DashboardShell>
+        <StatefulChild onMount={vi.fn()} />
+      </DashboardShell>,
+    );
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.getByTestId("child")).toBeTruthy();
+  });
+
+  it("quien SÍ lo activó y no lo ha usado va a /mfa, sin perder el árbol", async () => {
+    // La otra mitad: si lo activaste, hay que usarlo. Y el redirect no
+    // puede costar el estado montado — sería el bug de P0-BUG-02
+    // entrando por otra puerta.
+    authState = {
+      user: { id: "u1" },
+      loading: false,
+      accountRole: "agent",
+      profileLoading: false,
+    };
+    currentLevel = "aal1";
+    nextLevel = "aal2"; // tiene factor verificado
 
     const onMount = vi.fn();
     render(
@@ -236,29 +267,7 @@ describe("DashboardShell — el redirect a /mfa no cuesta el árbol (P0-SEC-09)"
 
     await vi.waitFor(() => expect(replace).toHaveBeenCalled());
     expect(String(replace.mock.calls[0][0])).toContain("/mfa");
-    // Uno, no cero y no dos: montado una vez y nunca reconstruido.
     expect(onMount).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("child")).toBeTruthy();
-  });
-
-  it("a un agent no lo manda a ninguna parte", async () => {
-    // «Un agent no se ve afectado», comprobado en la UI además de en
-    // el servidor.
-    authState = {
-      user: { id: "u1" },
-      loading: false,
-      accountRole: "agent",
-      profileLoading: false,
-    };
-    assuranceLevel = "aal1";
-
-    render(
-      <DashboardShell>
-        <StatefulChild onMount={vi.fn()} />
-      </DashboardShell>,
-    );
-
-    await new Promise((r) => setTimeout(r, 20));
-    expect(replace).not.toHaveBeenCalled();
   });
 });

@@ -1,23 +1,25 @@
 "use client";
 
 // ============================================================
-// Lleva a /mfa a quien administra la cuenta y todavía no tiene el
-// segundo factor puesto (P0-SEC-09).
+// Lleva a /mfa a quien TIENE el segundo factor activado y aún no lo ha
+// usado en esta sesión (P0-SEC-09).
 //
-// Esto es un redirect de conveniencia, no el control. El control está
-// en `requireRole` (src/lib/auth/account.ts) y devuelve 403 con
-// `mfa_enrollment_required` / `mfa_challenge_required` a cualquiera que
-// llame a la API sin cumplirlo, venga de esta UI o no. Lo que hace
-// este hook es que la persona aterrice donde puede resolverlo, en vez
-// de en un panel donde cada petición falla sin explicar por qué.
+// NO fuerza a inscribirse. El segundo factor es opcional y se activa
+// desde Ajustes; quien no lo tenga no pasa por aquí nunca, sea cual sea
+// su rol. La primera versión sí lo forzaba a todo admin y owner, y el
+// día del despliegue dejó al owner del proyecto delante de un QR sin
+// más salida que escanearlo.
 //
-// Por qué en el cliente y no en el proxy: decidir esto necesita el ROL,
-// que vive en `profiles`. El proxy corre en cada navegación, incluidas
-// las prefetch, y la guía de Next es explícita en no meter consultas a
-// base de datos ahí. El rol ya está cargado en el navegador.
+// Lo que queda es la otra mitad, que sí hace falta: si lo activaste,
+// tienes que usarlo. Sin este redirect, una sesión en aal1 aterrizaría
+// en el panel y cada petición devolvería 403 sin explicar por qué.
+//
+// El control real está en `requireRole` (src/lib/auth/account.ts), que
+// devuelve 403 `mfa_challenge_required` venga de esta UI o no.
 //
 // `getAuthenticatorAssuranceLevel()` se resuelve contra la sesión
-// local, sin red.
+// local, sin red: `nextLevel` es 'aal2' exactamente cuando hay un
+// factor verificado, así que la decisión no necesita consultar nada.
 // ============================================================
 
 import { useEffect } from "react";
@@ -25,22 +27,17 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { useAuth } from "@/hooks/use-auth";
 import { createClient } from "@/lib/supabase/client";
-import { hasMinRole } from "@/lib/auth/roles";
 
 /** Rutas que no deben redirigir: son la salida, o no piden nada. */
 const EXEMPT = ["/mfa", "/login", "/signup", "/join", "/forgot-password", "/reset-password"];
 
 export function useMfaGate(): void {
-  const { accountRole, profileLoading, user } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    // Sin rol conocido no se decide nada: adivinar aquí mandaría a /mfa
-    // a un agent durante el primer render, que es justo a quien la
-    // aceptación dice que no hay que molestar.
-    if (!user || profileLoading || !accountRole) return;
-    if (!hasMinRole(accountRole, "admin")) return;
+    if (!user) return;
     if (EXEMPT.some((p) => pathname === p || pathname?.startsWith(`${p}/`))) return;
 
     let cancelled = false;
@@ -62,17 +59,24 @@ export function useMfaGate(): void {
       //
       // Sabemos que hay sesión (`user` no es null), así que esperar es
       // correcto: la respuesta llega en cuanto el cliente hidrata.
-      let level: string | null = null;
+      let current: string | null = null;
+      let next: string | null = null;
       for (let i = 0; i < 40 && !cancelled; i++) {
         const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
         if (error) return;
         if (typeof data?.currentLevel === "string") {
-          level = data.currentLevel;
+          current = data.currentLevel;
+          next = data.nextLevel ?? null;
           break;
         }
         await new Promise((r) => setTimeout(r, 150));
       }
-      if (cancelled || level === null || level === "aal2") return;
+      if (cancelled || current === null) return;
+
+      // `nextLevel === 'aal2'` significa "tiene un factor verificado".
+      // Si no lo tiene, no hay reto que superar y no se le molesta.
+      if (next !== "aal2") return;
+      if (current === "aal2") return;
 
       // Se lleva el destino para volver donde estaba. El servidor no
       // acepta un `next` que no sea una ruta interna (sanitizeNextPath
@@ -91,5 +95,5 @@ export function useMfaGate(): void {
     return () => {
       cancelled = true;
     };
-  }, [accountRole, pathname, profileLoading, router, user]);
+  }, [pathname, router, user]);
 }

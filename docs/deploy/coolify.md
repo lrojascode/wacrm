@@ -211,7 +211,7 @@ Debe devolver **200** con un `access_token`.
 
 ---
 
-## 3.ter Activar el segundo factor — ajuste de proyecto, no SQL
+## 3.ter Activar el segundo factor — opcional
 
 En **cada proyecto de cliente**: Authentication → Multi-Factor
 Authentication → **TOTP (App Authenticator): ON**.
@@ -221,41 +221,47 @@ Authentication → **TOTP (App Authenticator): ON**.
 > primero, alguien inscribe un factor y luego no puede superar el reto:
 > queda encerrado por su propio segundo factor.
 
+Esto **habilita** la función; no obliga a nadie. Cada persona decide si
+la activa desde **Ajustes → Acceso y seguridad → Verificación en dos
+pasos**, y puede desactivarla desde el mismo sitio.
+
 ### Qué cambia, exactamente
 
-| Rol | Efecto |
+| Situación | Efecto |
 |---|---|
-| `viewer`, `agent` | **Ninguno.** Ni se les pide ni se les redirige. |
-| `admin`, `owner` | Al entrar se les lleva a `/mfa` a inscribir el autenticador. Sin él, las rutas de **configuración** devuelven 403; el inbox y el trabajo diario siguen funcionando. |
+| No lo ha activado | **Ninguno.** Entra con normalidad, sea owner, admin, agent o viewer. |
+| Lo ha activado | Al iniciar sesión se le pide el código. Sin él, las rutas de configuración devuelven 403 — que es lo que hace que activarlo signifique algo. |
 
-La exigencia se deriva del rol mínimo que cada ruta ya declara, así que
-cubre por igual las rutas nuevas y las viejas.
+> **Por qué es opcional y no obligatorio por rol.** La primera versión
+> lo exigía a todo `admin` y `owner`. Sobre el papel encajaba con la
+> escala de roles; en la práctica, el día del despliegue dejó al owner
+> del proyecto delante de un QR sin más salida que escanearlo. Una
+> medida que se activa de golpe para todo el mundo no es una medida, es
+> una puerta atascada.
 
-Además, cinco acciones piden **volver a teclear el código** aunque la
-sesión ya sea de confianza, si la última autenticación tiene más de
-5 minutos: rotar o desconectar el WhatsApp del inquilino, la
-exportación completa, transferir la propiedad y crear una API key.
+### La reautenticación viene con ella
 
-### ⚠️ Antes de desplegar: avisa a quien administra
+Cinco acciones —rotar o desconectar el WhatsApp, la exportación
+completa, transferir la propiedad y crear una API key— piden el código
+otra vez si la última autenticación tiene más de 5 minutos. **Solo a
+quien tenga el segundo factor activado**: sin él no hay forma de
+refrescar esa marca salvo cerrar sesión y volver a entrar, así que
+exigirlo dejaría esas acciones inservibles.
 
-El día del deploy, cada `owner` y cada `admin` necesita una app de
-autenticación a mano (Google Authenticator, 1Password, Authy…). No
-quedan bloqueados —se les lleva a la pantalla de inscripción, con QR y
-clave manual—, pero es una sorpresa evitable.
+Es la consecuencia honesta de que sea opcional: esa protección la tiene
+quien lo activa. Conviene saberlo en vez de suponer que cubre a todos.
 
 ### Si alguien pierde el teléfono
 
-No hay que tocar código ni desactivar nada. Se le retira el factor y en
-su siguiente entrada vuelve a inscribirlo:
+No hay que tocar código ni desactivar nada. Se le retira el factor y
+vuelve a entrar solo con su contraseña:
 
 ```sql
--- Mira qué tiene inscrito
 SELECT u.email, f.id, f.factor_type, f.status, f.created_at
 FROM auth.mfa_factors f
 JOIN auth.users u ON u.id = f.user_id
 WHERE u.email = 'persona@cliente.com';
 
--- Retíralo: vuelve al estado "sin inscribir", no a "sin acceso"
 DELETE FROM auth.mfa_factors
 WHERE user_id = (SELECT id FROM auth.users WHERE email = 'persona@cliente.com');
 ```
@@ -327,7 +333,7 @@ antes, se va a notar el mismo día del deploy.
 | **Las URLs del inbox llevan ahora el id de conversación** (`/inbox/<id>`). Los enlaces antiguos `?c=<id>` siguen funcionando con un 308. | Nadie, pero explica por qué la 052 importa más que antes: ese id ahora viaja en enlaces y capturas. |
 | **`/signup` ya no registra a nadie sin invitación.** La página lo dice en lugar de mostrar un formulario que fallaría al enviar, y `/login` deja de ofrecer "Crear cuenta" cuando no hay invitación de por medio. | Cualquiera que enviara el enlace de `/signup` a un compañero: ahora hay que mandarle una invitación desde Configuración → Miembros. |
 | **Quien no tenga el correo verificado no entra al dashboard.** | Nadie hoy: con `enable_confirmations = false` GoTrue autoconfirma, así que toda cuenta existente ya lo tiene. Comprobado contra la base antes de añadir el control. Importa el día que actives las confirmaciones. |
-| **`owner` y `admin` necesitan un autenticador TOTP para tocar la configuración**, y cinco acciones críticas piden el código otra vez si han pasado más de 5 minutos. | Todo el que administre una cuenta, el mismo día del deploy. Ver §3.ter: avísales antes, y ten a mano el SQL de recuperación. **`agent` y `viewer` no se ven afectados.** |
+| **La verificación en dos pasos está disponible, y es opcional.** Se activa desde Ajustes → Acceso y seguridad. | Nadie, salvo que la active. Quien lo haga tendrá que introducir el código al entrar. Ver §3.ter. |
 | **La CSP pasa a bloquear de verdad.** Antes solo informaba. | Nadie, si `NEXT_PUBLIC_SUPABASE_URL` está bien: la suite recorre login, inbox con media y realtime, dashboard con gráficos y ajustes contra un build de producción y exige cero violaciones. Ver §3.quater. |
 
 ---

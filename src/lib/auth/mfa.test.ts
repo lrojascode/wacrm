@@ -10,24 +10,29 @@ import { describe, expect, it } from "vitest";
 import {
   REAUTH_WINDOW_MS,
   deriveMfaStatus,
+  hasEnrolledFactor,
   isReauthFresh,
   lastAuthenticatedAt,
-  routeRequiresMfa,
 } from "./mfa";
 
 const ahora = Date.UTC(2026, 8, 10, 12, 0, 0);
 const segundos = (ms: number) => Math.floor(ms / 1000);
 
-describe("routeRequiresMfa", () => {
-  it("exime a lectura y operación", () => {
-    // Esto es «un agent no se ve afectado», escrito como test.
-    expect(routeRequiresMfa("viewer")).toBe(false);
-    expect(routeRequiresMfa("agent")).toBe(false);
+describe("hasEnrolledFactor", () => {
+  it("reconoce un factor verificado", () => {
+    expect(hasEnrolledFactor([{ status: "verified" }])).toBe(true);
   });
 
-  it("lo exige de configuración hacia arriba", () => {
-    expect(routeRequiresMfa("admin")).toBe(true);
-    expect(routeRequiresMfa("owner")).toBe(true);
+  it("uno a medio inscribir no cuenta", () => {
+    // Quien abandonó la inscripción a mitad no tiene con qué superar un
+    // reto: tratarlo como activado lo dejaría fuera sin salida.
+    expect(hasEnrolledFactor([{ status: "unverified" }])).toBe(false);
+  });
+
+  it("sin factores, no", () => {
+    expect(hasEnrolledFactor([])).toBe(false);
+    expect(hasEnrolledFactor(null)).toBe(false);
+    expect(hasEnrolledFactor(undefined)).toBe(false);
   });
 });
 
@@ -42,23 +47,26 @@ describe("deriveMfaStatus", () => {
     );
   });
 
-  it("sin factor verificado, manda a inscribirse", () => {
-    expect(deriveMfaStatus("aal1", [])).toBe("enrollment_required");
-    // Un factor a medio inscribir no cuenta: mandarle el reto sería un
-    // callejón sin salida, porque nunca lo confirmó.
-    expect(deriveMfaStatus("aal1", [{ status: "unverified" }])).toBe(
-      "enrollment_required",
-    );
+  it("sin factor activado no se exige nada", () => {
+    // El corazón de que sea opcional: quien no lo activó pasa, y pasa
+    // sea cual sea su rol.
+    expect(deriveMfaStatus("aal1", [])).toBe("satisfied");
+    // Un factor a medio inscribir tampoco cuenta: quien abandonó la
+    // inscripción no tiene con qué superar el reto.
+    expect(deriveMfaStatus("aal1", [{ status: "unverified" }])).toBe("satisfied");
   });
 
-  it("un aal ausente o raro no se toma por bueno", () => {
-    // Fallar en abierto aquí dejaría la configuración sin segundo
-    // factor ante cualquier token sin la claim.
+  it("con factor activado, un aal raro no se toma por bueno", () => {
+    // Aquí sí hay que fallar cerrado: si lo activaste, un token sin la
+    // claim no puede valer como reto superado.
     expect(deriveMfaStatus(undefined, [{ status: "verified" }])).toBe(
       "challenge_required",
     );
-    expect(deriveMfaStatus(null, [])).toBe("enrollment_required");
-    expect(deriveMfaStatus("aal3", [])).toBe("enrollment_required");
+    expect(deriveMfaStatus("aal3", [{ status: "verified" }])).toBe(
+      "challenge_required",
+    );
+    // Y sin factor, cerrado no significa bloquear a quien no eligió nada.
+    expect(deriveMfaStatus(null, [])).toBe("satisfied");
   });
 });
 

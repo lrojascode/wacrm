@@ -74,12 +74,16 @@ export async function loginAs(page: Page, userKey: string): Promise<SeedUser> {
 /**
  * Si la navegación acabó en /mfa, teclea el código y continúa.
  *
+ * Exportado porque hay specs que hacen su propio login —para probar el
+ * viaje de `?next=`, por ejemplo— y también tienen que pasar por aquí:
+ * los usuarios semilla de admin y owner llevan TOTP inscrito.
+ *
  * No es incondicional: un agent o un viewer no tienen factor y nunca
  * pasan por aquí, que es precisamente lo que la aceptación pide
  * («un agent no se ve afectado»). Si alguna vez acabaran en /mfa, este
  * helper fallaría al no encontrar secreto — y sería el aviso correcto.
  */
-async function completeMfaChallengeIfPresent(page: Page, user: SeedUser): Promise<void> {
+export async function completeMfaChallengeIfPresent(page: Page, user: SeedUser): Promise<void> {
   const secret = mfaSecretFor(user.email);
 
   // Sin factor inscrito no hay reto que superar, y tampoco debe

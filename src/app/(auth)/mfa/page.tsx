@@ -190,11 +190,11 @@ function MfaPageInner() {
           )}
         </div>
         <CardTitle className="text-xl text-foreground">
-          {enrolling ? "Protege tu cuenta" : "Introduce tu código"}
+          {enrolling ? "Activar verificación en dos pasos" : "Introduce tu código"}
         </CardTitle>
         <CardDescription className="text-muted-foreground">
           {enrolling
-            ? "La configuración y las credenciales de la cuenta necesitan un segundo factor. Escanea el código con tu app de autenticación."
+            ? "Escanea el código con tu app de autenticación. Podrás desactivarla cuando quieras desde Ajustes."
             : "Abre tu app de autenticación y escribe el código de seis dígitos."}
         </CardDescription>
       </CardHeader>
@@ -269,13 +269,27 @@ function MfaPageInner() {
           </Button>
         </form>
 
+        {/* Activar es opcional, así que tiene que haber forma de salir
+            sin hacerlo. Sin esto, quien llegara aquí solo podría
+            escanear el QR o cerrar sesión — que es justo el callejón
+            que tenía la primera versión. */}
+        {enrolling && (
+          <button
+            type="button"
+            onClick={() => router.push(destination)}
+            className="mt-6 w-full text-center text-sm text-muted-foreground hover:text-foreground"
+          >
+            Ahora no
+          </button>
+        )}
+
         <button
           type="button"
           onClick={async () => {
             await supabase.auth.signOut();
             router.push("/login");
           }}
-          className="mt-6 w-full text-center text-sm text-muted-foreground hover:text-foreground"
+          className="mt-3 w-full text-center text-sm text-muted-foreground hover:text-foreground"
         >
           Cerrar sesión
         </button>

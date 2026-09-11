@@ -1,25 +1,29 @@
 // ============================================================
 // Segundo factor y reautenticación (P0-SEC-09).
 //
-// QUÉ SE EXIGE, Y A QUIÉN
+// OPCIONAL, Y POR USUARIO
 //
-// La política de roles ya dice quién hace qué:
+// El segundo factor NO se impone por rol. Cada persona decide si lo
+// activa, desde Ajustes; quien no lo tenga entra con normalidad, sea
+// owner, admin, agent o viewer.
 //
-//   viewer  lectura
-//   agent   operación        ← trabajo diario, sin fricción añadida
-//   admin   configuración    ← a partir de aquí, segundo factor
-//   owner   secretos         ← y además reautenticación en lo crítico
+// Lo que sí se exige, a quien lo haya activado, es usarlo: si tienes un
+// factor verificado y la sesión está en aal1, hay que superar el reto.
+// Eso no es una barrera nueva — es lo que hace que activarlo signifique
+// algo. Sin ello, inscribir un factor sería decorativo.
 //
-// Así que la exigencia de MFA **se deriva del `minRole` que la ruta ya
-// declara**, no de una bandera nueva por ruta. Es deliberado: marcar a
-// mano las rutas de configuración repetiría el error que P0-SEC-01
-// arregló — un olvido es invisible en revisión, y aquí el olvido deja
-// la configuración de un inquilino detrás de una sola contraseña.
+// POR QUÉ SE CAMBIÓ
 //
-// De ahí sale gratis lo que pide la aceptación: «un agent no se ve
-// afectado». Ninguna ruta de agent o viewer pide segundo factor, ni
-// siquiera cuando quien llama es el owner — puede seguir leyendo el
-// inbox y respondiendo mensajes sin haber inscrito nada.
+// La primera versión lo exigía a todo `admin` y `owner`, derivándolo
+// del `minRole` de cada ruta. Sobre el papel encajaba con la escala de
+// roles; en la práctica, el día del despliegue dejó al owner del
+// proyecto delante de un QR sin más salida que escanearlo. Una medida
+// de seguridad que se activa de golpe para todo el mundo no es una
+// medida, es una puerta atascada.
+//
+// El estado vive donde ya vivía —los factores del usuario en Supabase—
+// así que no hace falta ni columna nueva ni migración: "lo tengo
+// activado" y "tengo un factor verificado" son la misma cosa.
 //
 // DOS PREGUNTAS DISTINTAS
 //
@@ -55,7 +59,6 @@
 // registro de cómo entró la sesión.
 // ============================================================
 
-import type { AccountRole } from "./roles";
 
 /**
  * Cuánto dura una reautenticación.
@@ -68,26 +71,11 @@ import type { AccountRole } from "./roles";
  */
 export const REAUTH_WINDOW_MS = 5 * 60 * 1000;
 
-/** Roles cuyas rutas exigen segundo factor. */
-const MFA_REQUIRED_FROM: AccountRole = "admin";
-
-const RANK: Record<AccountRole, number> = {
-  viewer: 1,
-  agent: 2,
-  admin: 3,
-  owner: 4,
-};
-
-/**
- * ¿Una ruta con este `minRole` exige segundo factor?
- *
- * Se mira el mínimo de la RUTA, no el rol de quien llama: un owner
- * leyendo el inbox (`minRole: 'viewer'`) no debe tropezar con el
- * segundo factor, y un admin tocando plantillas (`minRole: 'admin'`)
- * sí.
- */
-export function routeRequiresMfa(minRole: AccountRole): boolean {
-  return RANK[minRole] >= RANK[MFA_REQUIRED_FROM];
+/** ¿Esta persona activó el segundo factor? */
+export function hasEnrolledFactor(
+  factors: Array<{ status?: string }> | null | undefined,
+): boolean {
+  return (factors ?? []).some((f) => f?.status === "verified");
 }
 
 export interface AmrEntry {
@@ -97,11 +85,11 @@ export interface AmrEntry {
 
 /** Estado del segundo factor para quien llama. */
 export type MfaStatus =
-  /** Reto superado en esta sesión. */
+  /** Reto superado en esta sesión, o no lo tiene activado. */
   | "satisfied"
-  /** Tiene factor inscrito pero no lo ha usado en esta sesión. */
+  /** Lo activó pero no lo ha usado en esta sesión. */
   | "challenge_required"
-  /** No tiene ningún factor verificado. */
+  /** Lo activó y el factor ya no sirve. Reservado; hoy no se emite. */
   | "enrollment_required";
 
 /**
@@ -144,12 +132,16 @@ export function isReauthFresh(
   return now - at <= windowMs;
 }
 
-/** Deriva el estado a partir de las claims y de los factores inscritos. */
+/**
+ * Deriva el estado a partir de las claims y de los factores.
+ *
+ * Sin factor activado el resultado es `satisfied`: no hay nada que
+ * exigir. Es lo que hace que el control sea opcional.
+ */
 export function deriveMfaStatus(
   aal: unknown,
   factors: Array<{ status?: string }> | null | undefined,
 ): MfaStatus {
   if (aal === "aal2") return "satisfied";
-  const verified = (factors ?? []).some((f) => f?.status === "verified");
-  return verified ? "challenge_required" : "enrollment_required";
+  return hasEnrolledFactor(factors) ? "challenge_required" : "satisfied";
 }

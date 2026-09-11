@@ -209,71 +209,58 @@ describe("withRoute — correo sin verificar (P0-SEC-08)", () => {
   });
 });
 
-describe("withRoute — segundo factor (P0-SEC-09)", () => {
-  it("una ruta de agent no lo pide, ni siquiera al owner", async () => {
-    // «Un agent no se ve afectado» sale de aquí: la exigencia se
-    // deriva del minRole de la RUTA, no del rol de quien llama, así
-    // que el owner sigue trabajando en el inbox sin haber inscrito
-    // nada.
-    currentRole = "owner";
+describe("withRoute — segundo factor opcional (P0-SEC-09)", () => {
+  it("sin factor activado entra, sea cual sea el rol y la ruta", async () => {
+    // El corazón del cambio: el segundo factor es opcional. Nadie queda
+    // fuera por no tenerlo. Antes esto devolvía 403 a todo admin y
+    // owner, y el día del despliegue dejó al owner del proyecto
+    // delante de un QR sin más salida que escanearlo.
     aal = "aal1";
     factors = [];
-    const route = withRoute({ minRole: "agent" }, handler);
-
-    expect((await route(request())).status).toBe(200);
+    for (const minRole of ["viewer", "agent", "admin", "owner"] as const) {
+      currentRole = "owner";
+      handler.mockClear();
+      const route = withRoute({ minRole }, handler);
+      expect((await route(request())).status, `minRole=${minRole}`).toBe(200);
+    }
   });
 
-  for (const minRole of ["admin", "owner"] as const) {
-    it(`una ruta de ${minRole} sin factor inscrito manda a inscribirse`, async () => {
-      currentRole = "owner";
-      aal = "aal1";
-      factors = [];
-      const route = withRoute({ minRole }, handler);
+  it("con factor activado y sin usarlo, pide el código", async () => {
+    // La otra mitad: si lo activaste, tienes que usarlo. Sin esto,
+    // inscribir un factor sería decorativo.
+    currentRole = "admin";
+    aal = "aal1";
+    factors = [{ status: "verified" }];
+    const route = withRoute({ minRole: "admin" }, handler);
 
-      const res = await route(request());
-      const body = (await res.json()) as { code?: string };
+    const res = await route(request());
+    const body = (await res.json()) as { code?: string };
 
-      expect(res.status).toBe(403);
-      expect(body.code).toBe("mfa_enrollment_required");
-      expect(handler).not.toHaveBeenCalled();
-    });
-
-    it(`una ruta de ${minRole} con factor sin usar pide el código`, async () => {
-      // Distinto del anterior a propósito: mandar a inscribirse a
-      // quien ya tiene el factor puesto es un callejón sin salida.
-      currentRole = "owner";
-      aal = "aal1";
-      factors = [{ status: "verified" }];
-      const route = withRoute({ minRole }, handler);
-
-      const body = (await (await route(request())).json()) as { code?: string };
-
-      expect(body.code).toBe("mfa_challenge_required");
-    });
-  }
-
-  it("inscribirse no pasa por aquí, así que no hay punto muerto", async () => {
-    // La inscripción ocurre en el navegador contra Supabase
-    // (`supabase.auth.mfa.enroll`), no por una ruta de esta app. Si
-    // algún día lo hiciera, este test se rompería y habría que pensar
-    // en una escotilla — que es justo cuándo hace falta, y no antes.
-    const rutas = await import("node:fs").then((fs) =>
-      fs.readdirSync(new URL("../../app/api/account", import.meta.url).pathname),
-    );
-    expect(rutas).not.toContain("mfa");
+    expect(res.status).toBe(403);
+    expect(body.code).toBe("mfa_challenge_required");
+    expect(handler).not.toHaveBeenCalled();
   });
 
-  it("con aal2 pasa con normalidad", async () => {
-    // Contrapeso: sin esto la suite pasaría igual con un guard que
-    // rechazara a todo administrador.
+  it("con el reto superado, pasa", async () => {
     currentRole = "admin";
     aal = "aal2";
+    factors = [{ status: "verified" }];
     const route = withRoute({ minRole: "admin" }, handler);
 
     expect((await route(request())).status).toBe(200);
     expect(handler).toHaveBeenCalledOnce();
   });
 
+  it("un factor a medio inscribir no encierra a nadie", async () => {
+    // Quien abandonó la inscripción no tiene con qué superar el reto.
+    // Tratarlo como activado sería dejarlo fuera sin salida.
+    currentRole = "owner";
+    aal = "aal1";
+    factors = [{ status: "unverified" }];
+    const route = withRoute({ minRole: "owner" }, handler);
+
+    expect((await route(request())).status).toBe(200);
+  });
 });
 
 describe("withRoute — reautenticación (P0-SEC-09)", () => {
@@ -283,6 +270,7 @@ describe("withRoute — reautenticación (P0-SEC-09)", () => {
 
   it("una acción crítica con autenticación vieja se rechaza", async () => {
     currentRole = "owner";
+    factors = [{ status: "verified" }];
     amr = hace(30 * 60);
     const route = withRoute({ minRole: "owner", reauth: true }, handler);
 
@@ -296,6 +284,7 @@ describe("withRoute — reautenticación (P0-SEC-09)", () => {
 
   it("recién autenticado, pasa", async () => {
     currentRole = "owner";
+    factors = [{ status: "verified" }];
     amr = hace(10);
     const route = withRoute({ minRole: "owner", reauth: true }, handler);
 

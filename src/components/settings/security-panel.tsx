@@ -1,5 +1,6 @@
 'use client';
 
+import { MfaCard } from './mfa-card';
 import { PasswordForm } from './password-form';
 import { SessionsCard } from './sessions-card';
 import { SettingsPanelHead } from './settings-panel-head';
@@ -19,6 +20,7 @@ export function SecurityPanel() {
       />
       <div className="space-y-4">
         <PasswordForm />
+        <MfaCard />
         <SessionsCard />
       </div>
     </section>

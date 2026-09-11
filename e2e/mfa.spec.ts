@@ -1,11 +1,16 @@
 // ============================================================
-// P0-SEC-09 — segundo factor y reautenticación, contra la app viva.
+// P0-SEC-09 — segundo factor OPCIONAL, contra la app viva.
 //
-// Los tests unitarios prueban que las decisiones son correctas. Esto
-// prueba que se aplican: sesiones reales, cookies reales, handlers
-// reales. La diferencia importa porque el control se deriva del
-// `minRole` de cada ruta, y un error ahí no se ve en la unidad — se ve
-// cuando una ruta de configuración deja pasar una sesión de aal1.
+// Dos afirmaciones, y la primera es la que más importa desde que esto
+// dejó de ser obligatorio:
+//
+//   sin activarlo, nadie queda fuera
+//   activándolo, hay que usarlo
+//
+// La primera versión lo exigía a todo admin y owner. El día del
+// despliegue eso dejó al owner del proyecto delante de un QR sin más
+// salida que escanearlo, así que aquí se prueba explícitamente que ya
+// no ocurre.
 // ============================================================
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -53,14 +58,12 @@ async function signInWithoutSecondFactor(page: Page, userKey: string): Promise<v
   await page.waitForURL(/\/mfa/, { timeout: 30_000 });
 }
 
-test.describe("a quien administra se le exige el segundo factor", () => {
-  test("un owner en aal1 no entra a una ruta de configuración", async ({ page }) => {
+test.describe("quien lo activó, tiene que usarlo", () => {
+  test("un owner con factor activado y en aal1 no entra a configuración", async ({ page }) => {
     await signInWithoutSecondFactor(page, "acmeOwner");
 
-    // Sesión válida, rol de sobra, y aun así no pasa: le falta el
-    // factor. El código distingue "mete el código" de "inscríbete",
-    // porque mandar a inscribirse a quien ya tiene factor es un
-    // callejón sin salida.
+    // El seed le inscribió un TOTP, así que esta sesión está a medias.
+    // Sin esto, activar el segundo factor sería decorativo.
     const res = await callApi(page, "/api/whatsapp/config", "DELETE");
 
     expect(res.status).toBe(403);
@@ -90,9 +93,8 @@ test.describe("a quien administra se le exige el segundo factor", () => {
   });
 });
 
-test.describe("a quien solo opera, no", () => {
+test.describe("quien no lo activó, entra con normalidad", () => {
   test("un agent entra sin que le pidan nada", async ({ page }) => {
-    // «Un agent no se ve afectado», comprobado de extremo a extremo.
     // `loginAs` ya falla si un usuario sin factor acaba en /mfa.
     await loginAs(page, "acmeAgent");
     await page.goto("/inbox");
@@ -121,19 +123,49 @@ test.describe("a quien solo opera, no", () => {
   });
 });
 
-test.describe("inscripción", () => {
-  test("un owner sin factor ve el código QR, no un muro", async ({ page }) => {
-    // Un usuario nuevo, dueño de su propia cuenta y sin nada inscrito:
-    // exactamente quien encontrará esto el día del despliegue.
-    const email = `mfa-nuevo-${Date.now()}@ejemplo.test`;
+test.describe("activarlo es un camino, no un muro", () => {
+  test("desde Ajustes se llega al QR y a la clave manual", async ({ page }) => {
+    // Antes se llegaba aquí a la fuerza, nada más iniciar sesión. Ahora
+    // se llega queriendo, desde Ajustes → Acceso y seguridad.
+    await loginAs(page, "acmeAgent");
+    await page.goto("/settings?tab=security");
+
+    await page.getByTestId("mfa-enable").click();
+    await page.waitForURL(/\/mfa/, { timeout: 30_000 });
+
+    await expect(page.getByAltText(/QR/i)).toBeVisible({ timeout: 30_000 });
+    // Y una alternativa para quien no pueda escanear.
+    await page.getByText(/no puedes escanear/i).click();
+    await expect(page.getByTestId("mfa-secret")).toBeVisible();
+  });
+
+  test("y se puede salir sin activarlo", async ({ page }) => {
+    // La salida que la primera versión no tenía: quien llegue aquí y
+    // cambie de idea vuelve a su trabajo, no se queda delante del QR.
+    await loginAs(page, "acmeAgent");
+    await page.goto("/mfa?next=%2Finbox");
+
+    await page.getByText(/ahora no/i).click();
+
+    await page.waitForURL(/\/inbox/, { timeout: 30_000 });
+    await expect(page).not.toHaveURL(/\/mfa/);
+  });
+});
+
+test.describe("no se obliga a nadie a activarlo", () => {
+  test("un owner SIN factor llega al dashboard y opera configuración", async ({ page }) => {
+    // La regresión que este archivo existe para vigilar. Un usuario
+    // nuevo, dueño de su cuenta y sin nada inscrito: exactamente quien
+    // quedó atascado el día del despliegue.
+    const email = `sin-mfa-${Date.now()}@ejemplo.test`;
     const db = admin();
     const { data: created, error } = await db.auth.admin.createUser({
       email,
       password: E2E_PASSWORD,
       email_confirm: true,
-      user_metadata: { full_name: "Sin Factor" },
+      user_metadata: { full_name: "Sin Segundo Factor" },
     });
-    expect(error, "el usuario de prueba debe crearse").toBeNull();
+    expect(error).toBeNull();
 
     try {
       await page.goto("/login");
@@ -145,13 +177,13 @@ test.describe("inscripción", () => {
       await page.locator("#password").fill(E2E_PASSWORD);
       await page.locator('button[type="submit"]').click();
 
-      // Dirigido a inscripción, que es lo que pide la aceptación —
-      // no bloqueado con un mensaje sin salida.
-      await page.waitForURL(/\/mfa/, { timeout: 30_000 });
-      await expect(page.getByAltText(/QR/i)).toBeVisible({ timeout: 30_000 });
-      // Y una alternativa para quien no pueda escanear.
-      await page.getByText(/no puedes escanear/i).click();
-      await expect(page.getByTestId("mfa-secret")).toBeVisible();
+      // Ni /mfa ni QR: directo a trabajar.
+      await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+      await expect(page).not.toHaveURL(/\/mfa/);
+
+      // Y la configuración responde, que es lo que antes devolvía 403.
+      const res = await callApi(page, "/api/whatsapp/config", "GET");
+      expect(res.status).not.toBe(403);
     } finally {
       const userId = created?.user?.id;
       if (userId) {
@@ -159,5 +191,13 @@ test.describe("inscripción", () => {
         await db.auth.admin.deleteUser(userId);
       }
     }
+  });
+
+  test("y puede activarlo desde Ajustes si quiere", async ({ page }) => {
+    await loginAs(page, "acmeAgent");
+    await page.goto("/settings?tab=security");
+
+    // El agent no tiene factor, así que la tarjeta ofrece activarlo.
+    await expect(page.getByTestId("mfa-enable")).toBeVisible({ timeout: 30_000 });
   });
 });

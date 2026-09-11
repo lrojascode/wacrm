@@ -26,8 +26,8 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { loginAs } from "./support/auth";
-import { conversationsFor, E2E_PASSWORD } from "./support/fixtures";
+import { completeMfaChallengeIfPresent, loginAs } from "./support/auth";
+import { conversationsFor, E2E_PASSWORD, userByKey } from "./support/fixtures";
 
 const [firstConversation] = conversationsFor("acme");
 
@@ -294,6 +294,12 @@ test.describe("P0-BUG-01 · diagnóstico de transiciones de auth", () => {
     await page.waitForURL((url) => !url.pathname.startsWith("/login"), {
       timeout: 30_000,
     });
+
+    // Este login es manual (para probar el viaje de `?next=`), así que
+    // hay que superar el reto a mano también: el owner semilla lleva
+    // TOTP inscrito, y sin completarlo la sesión se queda en aal1 y el
+    // shell lo desvía a /mfa antes de que el hilo llegue a pintarse.
+    await completeMfaChallengeIfPresent(page, userByKey("acmeOwner"));
 
     console.log(`\n=== P0-BUG-03 · vuelta tras iniciar sesión ===\n  URL: ${page.url()}\n`);
 
