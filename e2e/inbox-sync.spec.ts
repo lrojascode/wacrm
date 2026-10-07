@@ -187,11 +187,11 @@ test('una sincronización fallida conserva el chat y permite volver a refrescar'
 test('seleccionar otro hilo no vacía el anterior antes de confirmar la navegación', async ({
   page,
 }) => {
-  const { thread } = await prepareReading(page);
   test.skip(
     (page.viewportSize()?.width ?? 0) < 1024,
     'la selección directa de otro hilo solo existe en escritorio'
   );
+  const { thread } = await prepareReading(page);
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;

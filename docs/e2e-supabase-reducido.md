@@ -9,6 +9,8 @@ la API administrativa. No prueban cargas de archivos ni correos de recuperación
 Para añadir esos escenarios hay que volver a incluir Storage o Mailpit.
 Las migraciones del CRM se aplican completas, incluidas las políticas del esquema
 `storage`; omitir su servidor HTTP no elimina esas migraciones.
+El CLI puede descargar y usar la imagen de Storage una vez para inicializar
+su esquema, aunque el servidor no quede levantado.
 
 ## Ejecución local
 
