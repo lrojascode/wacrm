@@ -1,10 +1,47 @@
 # Estado de vulnerabilidades de dependencias
 
-**Última actualización:** 2026-09-09 · **Comando de referencia:** `pnpm audit --prod`
-**Tareas relacionadas:** P0-DEP-01 (✅) · P0-DEP-02 (✅) · P0-DEP-03 (✅) · P0-DEP-04 (pendiente)
+**Última actualización:** 2026-10-06 · **Comandos de referencia:** `pnpm audit --prod` y `pnpm audit:ci`
+**Tareas relacionadas:** P0-DEP-01 (✅) · P0-DEP-02 (✅) · P0-DEP-03 (✅) · P0-DEP-04 (✅)
 **Spec:** [`docs/spec-endurecimiento-piloto.md`](../spec-endurecimiento-piloto.md)
 
 Este documento registra los advisories que **permanecen abiertos a propósito**, con su justificación y su condición de cierre. Un advisory sin entrada aquí es un fallo de proceso, no una excepción aceptada.
+
+## Estado vigente para el despliegue del arreglo del Inbox
+
+- `pnpm audit --prod`: **ninguna vulnerabilidad conocida**.
+- `pnpm audit:ci`: aprobado con **una excepción temporal de desarrollo**.
+- Se actualizan Next.js y su configuración de ESLint a **16.3.8**, Sharp a
+  **0.35.5**, Vitest a **4.1.11** y el CLI de shadcn a **4.21.3**.
+- Los overrides de `brace-expansion` conservan las líneas 1 y 5 compatibles con
+  sus consumidores, ahora con mínimos **1.1.21** y **5.0.12**. También se corrigen
+  `source-map-js`, `fast-uri` e `ip-address` y se actualizan selectivamente los
+  transitivos vulnerables de las herramientas.
+- Las comprobaciones de navegador en CI se ejecutan contra `next build` y
+  `next start` (`E2E_PROD=1`), para verificar también la CSP de producción.
+
+### Excepción de braces: solo herramientas, hasta 2026-11-05
+
+[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) afecta a
+`braces` 3.0.3 y **no tiene versión corregida publicada**. Actualizar micromatch y
+fast-glob no lo elimina: sus últimas versiones todavía dependen de ese paquete.
+
+`pnpm why braces` lo sitúa bajo `eslint-config-next` y `shadcn`, ambos
+`devDependencies`. `pnpm why braces --prod` no devuelve ninguna ruta. El código
+del CRM no lo importa, y los patrones de esas herramientas proceden de la
+configuración del repositorio; no se generan a partir de mensajes o peticiones.
+El riesgo residual aceptado es la terminación de una herramienta de desarrollo
+por un patrón profundamente anidado, no una exposición del servidor del CRM.
+
+La excepción está en `security/audit-exceptions.json`, caduca el **2026-11-05** y
+se retira cuando se publique una corrección o se elimine la dependencia. Si
+aparece en el árbol de producción, debe corregirse antes de desplegar. El gate
+no se desactiva: continúa bloqueando otros avisos altos o críticos, excepciones
+caducadas y excepciones que ya no correspondan a un advisory.
+
+Esta excepción **no significa cero advisories altos en el árbol completo**.
+Para un gate de piloto que exija cero altos absolutos, hará falta cerrar también
+este aviso. Las secciones siguientes conservan el historial de las correcciones
+anteriores y sus inventarios en las fechas indicadas.
 
 ---
 
@@ -168,8 +205,8 @@ Las reglas se prueban en `src/lib/security/audit-policy.test.ts`, sin
 red ni disco: un gate que falla en abierto no se nota, porque CI sigue
 verde y nadie vuelve a mirar.
 
-**Ahora mismo la lista de excepciones está vacía**, y esa es la primera
-opción siempre: las 6 `high` que había se arreglaron, no se excusaron
+**Al activar el gate el 2026-09-10, la lista de excepciones quedó vacía**:
+las 6 `high` que había se arreglaron, no se excusaron
 (ver abajo).
 
 ## Las 6 `high` de desarrollo: arregladas, no excusadas — ✅ (2026-09-10)

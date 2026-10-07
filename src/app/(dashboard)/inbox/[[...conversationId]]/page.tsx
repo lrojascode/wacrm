@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 import type { Conversation, Message, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
+import { useInboxMessages } from "@/hooks/use-inbox-messages";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
@@ -73,7 +74,12 @@ function InboxPageInner() {
    * work for free: the browser changes the URL, and the selection
    * follows.
    */
-  const [messages, setMessages] = useState<Message[]>([]);
+  const {
+    messages, messagesLoaded,
+    onMessagesLoaded: handleMessagesLoaded,
+    onNewMessage: handleNewMessage,
+    onUpdateMessage: handleUpdateMessage,
+  } = useInboxMessages(routeConvId);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
@@ -254,15 +260,7 @@ function InboxPageInner() {
           activeConversation &&
           newMsg.conversation_id === activeConversation.id
         ) {
-          setMessages((prev) => {
-            // Avoid duplicates
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            // Replace optimistic message if it exists
-            const withoutOptimistic = prev.filter(
-              (m) => !m.id.startsWith("temp-")
-            );
-            return [...withoutOptimistic, newMsg];
-          });
+          handleNewMessage(newMsg);
         }
 
         // Update conversation list preview. We need to know *synchronously*
@@ -298,12 +296,10 @@ function InboxPageInner() {
 
       if (event.eventType === "UPDATE") {
         // Update message status
-        setMessages((prev) =>
-          prev.map((m) => (m.id === newMsg.id ? { ...m, ...newMsg } : m))
-        );
+        handleUpdateMessage(newMsg.id, newMsg);
       }
     },
-    [activeConversation, hydrateConversation]
+    [activeConversation, hydrateConversation, handleNewMessage, handleUpdateMessage]
   );
 
   // A conversation is gone — either this tab deleted it, or realtime
@@ -319,7 +315,6 @@ function InboxPageInner() {
       knownConvIdsRef.current.delete(conversationId);
 
       if (routeConvId === conversationId) {
-        setMessages([]);
         // Someone else deleted the thread the user was reading. Say so
         // rather than silently emptying the pane.
         toast.error(t("conversationDeleted"));
@@ -548,7 +543,6 @@ function InboxPageInner() {
       // Re-clicking the open conversation would push a duplicate history
       // entry, so Back would appear to do nothing once per extra click.
       if (routeConvId === conv.id) return;
-      setMessages([]);
       // Optimistically clear the unread badge for this conv. The
       // server-side reset is fired by the unread-reset effect inside
       // MessageThread (which reads activeConversation.unread_count, not
@@ -582,30 +576,9 @@ function InboxPageInner() {
   // `router.back()` here would land on the dashboard whenever the user
   // arrived from there, which is precisely the reported complaint.
   const handleCloseConversation = useCallback(() => {
-    setMessages([]);
     router.push("/inbox", { scroll: false });
   }, [router]);
 
-
-  const handleMessagesLoaded = useCallback((loaded: Message[]) => {
-    setMessages(loaded);
-  }, []);
-
-  const handleNewMessage = useCallback((msg: Message) => {
-    setMessages((prev) => {
-      if (prev.some((m) => m.id === msg.id)) return prev;
-      return [...prev, msg];
-    });
-  }, []);
-
-  const handleUpdateMessage = useCallback(
-    (id: string, updates: Partial<Message>) => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
-      );
-    },
-    []
-  );
 
   const handleStatusChange = useCallback(
     (conversationId: string, status: ConversationStatus) => {
@@ -689,6 +662,7 @@ function InboxPageInner() {
             conversation={activeConversation}
             contact={activeContact}
             messages={messages}
+            messagesLoaded={messagesLoaded}
             onMessagesLoaded={handleMessagesLoaded}
             onNewMessage={handleNewMessage}
             onUpdateMessage={handleUpdateMessage}
