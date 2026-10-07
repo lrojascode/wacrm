@@ -16,9 +16,17 @@
     "corresponde a ningún advisory bloquea igual: una excepción muerta hace",
     "creer que el problema sigue vivo.",
     "",
-    "La lista está VACÍA a propósito. Las 6 high que había (brace-expansion",
-    "vía eslint) se arreglaron con overrides en vez de excusarse, que es",
-    "siempre la primera opción. Ver docs/security/dependencies.md."
+    "Actualizar es siempre la primera opción. La única excepción actual",
+    "es braces, solo en herramientas de desarrollo y sin parche publicado.",
+    "Ver docs/security/dependencies.md para el análisis de alcance."
   ],
-  "exceptions": []
+  "exceptions": [
+    {
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "reason": "No existe versión parcheada publicada. Llega exclusivamente por micromatch/fast-glob de eslint-config-next y shadcn (devDependencies). No se importa desde src ni scripts de runtime y pnpm audit --prod no lo incluye. Sus patrones en este proyecto proceden de la configuración de lint y scaffolding controlada por el repositorio, no de mensajes, contactos ni peticiones del CRM. Se acepta temporalmente el riesgo de agotamiento de pila en herramientas de desarrollo; no se acepta en producción.",
+      "closingCondition": "Actualizar micromatch/braces o sus consumidores cuando haya una versión corregida publicada, o retirar la dependencia, y eliminar esta excepción en la misma actualización. Si el advisory aparece en el árbol de producción, dejar de tolerarlo y corregirlo antes de desplegar.",
+      "expires": "2026-11-05"
+    }
+  ]
 }

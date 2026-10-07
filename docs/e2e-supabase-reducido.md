@@ -48,6 +48,8 @@ si el límite está lleno, omitir servicios no basta por sí solo.
 
 El workflow `.github/workflows/e2e.yml` ejecuta este mismo perfil y la suite
 completa en Chromium de escritorio y WebKit con el dispositivo iPhone 13.
+La pasada de CI usa `E2E_PROD=1` para probar el build de producción; la ejecución
+local usa desarrollo por defecto, salvo que se configure esa variable.
 Arranca una base local descartable en el runner, exporta sus credenciales y
 conserva el informe de Playwright y los traces de errores como artefactos.
 Se activa al abrir o actualizar un PR hacia `main` y al hacer push a `main`.

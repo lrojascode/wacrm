@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 30
 
     env:
+      # Validate the artefact we deploy, including production CSP and caching.
+      E2E_PROD: '1'
       # Read at module load by lib/whatsapp/*. Must match vitest.config.ts
       # and ci.yml so behaviour is identical across the three runners.
       ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
