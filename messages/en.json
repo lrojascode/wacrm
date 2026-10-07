@@ -252,6 +252,8 @@
       "deleteError": "Couldn't delete the conversation"
     },
     "messageThread": {
+      "loadMessagesError": "Messages could not be loaded.",
+      "retryLoadMessages": "Retry",
       "backToConversations": "Back to conversations",
       "hideContactPanel": "Hide contact panel",
       "showContactPanel": "Show contact panel",

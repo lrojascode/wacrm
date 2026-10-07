@@ -59,14 +59,17 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.117.0
 
       # Applies supabase/migrations/* and supabase/seed.sql. If this step
       # fails, the cause is almost always a migration that is not
       # idempotent — the same failure a customer would hit on a fresh
       # project, so it is worth surfacing loudly.
-      - name: Start Supabase
-        run: supabase start
+      # The current suite uses text fixtures, Auth, REST and Realtime.
+      # Run the same reduced stack available locally; Studio, Storage,
+      # email capture, analytics and Edge Functions are not exercised.
+      - name: Start Supabase (test services only)
+        run: pnpm run supabase:start:test
 
       # `supabase status` prints the keys the stack generated. They are
       # deterministic for a local stack but reading them beats hardcoding,

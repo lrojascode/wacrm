@@ -37,6 +37,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "supabase:start:test": "supabase start --exclude studio,postgres-meta,edge-runtime,logflare,vector,supavisor,storage-api,imgproxy,mailpit",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",

@@ -88,6 +88,7 @@ export function MessageActions({
   // in the row no longer reveals the toolbar.
   return (
     <div
+      data-message-id={message.id}
       className={cn(
         "flex w-full",
         isAgent ? "justify-end" : "justify-start",

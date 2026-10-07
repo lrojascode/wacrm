@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
+import { useMessageSync } from "@/hooks/use-message-sync";
+import { useMessageScroll } from "@/hooks/use-message-scroll";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
@@ -40,7 +42,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./message-bubble";
 import { MessageActions } from "./message-actions";
 import {
@@ -71,7 +72,8 @@ interface MessageThreadProps {
   conversation: Conversation | null;
   contact: Contact | null;
   messages: Message[];
-  onMessagesLoaded: (messages: Message[]) => void;
+  messagesLoaded: boolean;
+  onMessagesLoaded: (conversationId: string, messages: Message[], baseline: Message[]) => void;
   onNewMessage: (message: Message) => void;
   onUpdateMessage: (id: string, updates: Partial<Message>) => void;
   onStatusChange: (conversationId: string, status: ConversationStatus) => void;
@@ -166,6 +168,7 @@ export function MessageThread({
   conversation,
   contact,
   messages,
+  messagesLoaded,
   onMessagesLoaded,
   onNewMessage,
   onUpdateMessage,
@@ -184,33 +187,25 @@ export function MessageThread({
 
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
-  const [loading, setLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const conversationId = conversation?.id;
+  const { syncing, error: loadError, retry } = useMessageSync(
+    conversationId, messages, onMessagesLoaded, resyncToken,
+  );
+  const { scrollRef, onScroll, followOwnSend } = useMessageScroll(
+    conversationId, messages, messagesLoaded,
+  );
+  const handleOwnMessage = useCallback((message: Message) => {
+    followOwnSend();
+    onNewMessage(message);
+  }, [followOwnSend, onNewMessage]);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
-  // Purely visual spin state for the manual-refresh button. The actual
-  // refetch is fire-and-forget through `onRefresh` (which bumps the
-  // parent's resyncToken); the 700ms spin is just feedback so the click
-  // doesn't feel like a no-op. Cleared via the timer ref on unmount.
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (refreshTimerRef.current !== null) {
-        clearTimeout(refreshTimerRef.current);
-      }
-    };
-  }, []);
   const handleRefreshClick = useCallback(() => {
-    if (isRefreshing || !onRefresh) return;
-    setIsRefreshing(true);
-    onRefresh();
-    refreshTimerRef.current = setTimeout(() => {
-      setIsRefreshing(false);
-      refreshTimerRef.current = null;
-    }, 700);
-  }, [isRefreshing, onRefresh]);
+    if (syncing) return;
+    if (onRefresh) onRefresh();
+    else retry();
+  }, [syncing, onRefresh, retry]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
 
   // Profiles are bounded by RLS to rows the current user is allowed to
@@ -263,59 +258,7 @@ export function MessageThread({
     return { expired, remaining };
   }, [messages, tTimer]);
 
-  // Store latest callback in a ref so fetchMessages doesn't need to
-  // depend on `onMessagesLoaded` — otherwise parent re-renders cause
-  // fetchMessages to change → useEffect re-fires → refetch → realtime
-  // UPDATE on conversations.unread_count → parent re-renders → LOOP.
-  // The ref is written inside an effect so the mutation doesn't happen
-  // during render (React 19 refs rule); consumers only read `.current`
-  // inside the async fetch completion, which runs after the render.
-  const onMessagesLoadedRef = useRef(onMessagesLoaded);
-  useEffect(() => {
-    onMessagesLoadedRef.current = onMessagesLoaded;
-  });
-
-  const conversationId = conversation?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
-
-  // Fetch messages whenever the selected conversation changes. Kept
-  // separate from the unread-reset effect so that incoming messages
-  // arriving while the thread is open don't trigger a full refetch —
-  // they only flip hasUnread, which only the reset effect listens to.
-  useEffect(() => {
-    if (!conversationId) return;
-
-    const supabase = createClient();
-    let cancelled = false;
-
-    (async () => {
-      setLoading(true);
-
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
-
-      if (cancelled) return;
-
-      if (error) {
-        console.error("Failed to fetch messages:", error);
-      } else {
-        onMessagesLoadedRef.current(data ?? []);
-      }
-
-      if (!cancelled) setLoading(false);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // `resyncToken` is included so the parent can force a refetch when
-    // the realtime channel reconnects or the tab regains focus —
-    // realtime is best-effort and any message events sent while the WS
-    // was disconnected or throttled are otherwise lost.
-  }, [conversationId, resyncToken]);
 
   // Reactions fetch — pulls the current state from the DB. Kept separate
   // from the channel subscription below so a `resyncToken` bump just
@@ -447,14 +390,6 @@ export function MessageThread({
       });
   }, [conversationId, hasUnread]);
 
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    if (scrollRef.current) {
-      const el = scrollRef.current;
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [messages]);
-
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
       if (!conversation) return;
@@ -472,7 +407,7 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
-      onNewMessage(optimisticMsg);
+      handleOwnMessage(optimisticMsg);
       setReplyTo(null);
 
       try {
@@ -501,7 +436,10 @@ export function MessageThread({
         // Success — the realtime INSERT event will replace the temp bubble
         // with the real DB row. If realtime hasn't arrived yet, at least
         // flip status to 'sent' so the UI stops showing "sending".
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, {
+          status: "sent",
+          id: typeof payload.message_id === "string" ? payload.message_id : tempId,
+        });
       } catch (err) {
         console.error("Failed to send message:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -509,7 +447,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage]
+    [conversation, handleOwnMessage, onUpdateMessage]
   );
 
   const handleSendMedia = useCallback(
@@ -536,7 +474,7 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: payload.replyToId,
       };
-      onNewMessage(optimisticMsg);
+      handleOwnMessage(optimisticMsg);
       setReplyTo(null);
 
       try {
@@ -566,7 +504,10 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, {
+          status: "sent",
+          id: typeof data.message_id === "string" ? data.message_id : tempId,
+        });
       } catch (err) {
         console.error("Failed to send media:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -575,7 +516,7 @@ export function MessageThread({
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, handleOwnMessage, onUpdateMessage],
   );
 
   const handleSendInteractive = useCallback(
@@ -596,7 +537,7 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
-      onNewMessage(optimisticMsg);
+      handleOwnMessage(optimisticMsg);
 
       try {
         const res = await fetch("/api/whatsapp/send", {
@@ -620,7 +561,10 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, {
+          status: "sent",
+          id: typeof data.message_id === "string" ? data.message_id : tempId,
+        });
       } catch (err) {
         console.error("Failed to send interactive message:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -628,7 +572,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, handleOwnMessage, onUpdateMessage],
   );
 
   const handleStatusChange = useCallback(
@@ -674,7 +618,7 @@ export function MessageThread({
         status: "sending",
         created_at: new Date().toISOString(),
       };
-      onNewMessage(optimisticMsg);
+      handleOwnMessage(optimisticMsg);
 
       try {
         const res = await fetch("/api/whatsapp/send", {
@@ -709,7 +653,10 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, {
+          status: "sent",
+          id: typeof payload.message_id === "string" ? payload.message_id : tempId,
+        });
       } catch (err) {
         console.error("Failed to send template:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -717,7 +664,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, handleOwnMessage, onUpdateMessage],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -760,7 +707,7 @@ export function MessageThread({
         preview: buildReplyPreview(msg, tQuote),
       });
     },
-    [authorLabelFor],
+    [authorLabelFor, tQuote],
   );
 
   // Single reaction-set primitive. emoji === "" removes; otherwise adds/swaps.
@@ -962,7 +909,7 @@ export function MessageThread({
             <button
               type="button"
               onClick={handleRefreshClick}
-              disabled={isRefreshing}
+              disabled={syncing}
               aria-label={t("refreshConversation")}
               title={t("refresh")}
               className={cn(
@@ -970,7 +917,7 @@ export function MessageThread({
               )}
             >
               <RefreshCw
-                className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
+                className={cn("h-3.5 w-3.5", syncing && "animate-spin")}
               />
             </button>
           )}
@@ -1074,10 +1021,24 @@ export function MessageThread({
           one they mean. */}
       <div
         ref={scrollRef}
+        onScroll={onScroll}
+        style={{ overflowAnchor: "none" }}
         data-testid="message-thread"
         className="flex-1 overflow-y-auto px-4 py-4"
       >
-        {loading ? (
+        {!messagesLoaded && loadError ? (
+          <div role="alert" className="flex flex-col items-center gap-3 py-12">
+            <p className="text-sm text-muted-foreground">{t("loadMessagesError")}</p>
+            <button
+              type="button"
+              onClick={handleRefreshClick}
+              disabled={syncing}
+              className="text-sm text-primary hover:underline"
+            >
+              {t("retryLoadMessages")}
+            </button>
+          </div>
+        ) : !messagesLoaded ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
@@ -1091,7 +1052,7 @@ export function MessageThread({
         ) : (
           <div className="space-y-4">
             {messageGroups.map((group) => (
-              <div key={group.date}>
+              <div key={format(new Date(group.date), "yyyy-MM-dd")}>
                 {/* Date separator */}
                 <div className="mb-4 flex items-center justify-center">
                   <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium text-muted-foreground">
