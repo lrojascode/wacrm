@@ -974,12 +974,12 @@ export function MessageThread({
                 {contact?.phone ?? " "}
               </p>
             </div>
-            {/* Session timer badge — hidden on the narrowest phones so
-              the name + back arrow keep their room. */}
+            {/* Keep the contact name visible on phones and compact desktop
+                panels; the timer fits on tablets and wider desktops. */}
             <Badge
               variant="outline"
               className={cn(
-                "border-border ml-1 hidden gap-1 text-[10px] sm:ml-2 sm:inline-flex",
+                "border-border ml-1 hidden gap-1 text-[10px] sm:ml-2 sm:inline-flex lg:hidden 2xl:inline-flex",
                 sessionInfo.expired ? "text-red-400" : "text-primary",
               )}
             >
