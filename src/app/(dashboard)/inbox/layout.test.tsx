@@ -60,3 +60,16 @@ it('discards private state on account changes and confirmed sign-out', () => {
   view.rerender(<InboxLayout>{null}</InboxLayout>);
   expect(screen.getByText('workspace 0')).toBeVisible();
 });
+
+it('does not expose the previous user cache while the next user profile is still loading', () => {
+  const view = render(<InboxLayout>{null}</InboxLayout>);
+  fireEvent.click(screen.getByText('workspace 0'));
+  auth.user = { id: 'next-user' };
+  auth.accountId = null;
+  auth.loading = true;
+  view.rerender(<InboxLayout>{null}</InboxLayout>);
+  expect(screen.queryByText('workspace 1')).toBeNull();
+  auth.accountId = 'next-account';
+  view.rerender(<InboxLayout>{null}</InboxLayout>);
+  expect(screen.getByText('workspace 0')).toBeVisible();
+});

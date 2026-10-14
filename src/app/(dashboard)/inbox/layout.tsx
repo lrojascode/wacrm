@@ -10,6 +10,7 @@ export default function InboxLayout({ children }: { children: ReactNode }) {
   const [scope, setScope] = useState<string | null>(resolvedScope);
   // A transient profile/session refresh must not discard the workspace.
   // A confirmed account change/sign-out must discard its private cache.
+  if (user && scope && !resolvedScope && !scope.startsWith(`${user.id}:`)) setScope(null);
   if (resolvedScope && resolvedScope !== scope) setScope(resolvedScope);
   if (!user && !loading && scope) setScope(null);
   return (
