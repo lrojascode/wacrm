@@ -205,7 +205,9 @@ test('una respuesta abandonada no reemplaza el chat más reciente ni su contacto
     await expect(thread.getByText(second.firstMessage)).toHaveCount(0);
     await expect(thread).toHaveAttribute('data-conversation-id', third.id);
     await expect(
-      page.getByRole('heading', { name: third.contactName, exact: true })
+      thread
+        .locator('..')
+        .getByRole('heading', { name: third.contactName, exact: true })
     ).toBeVisible();
     await testInfo.attach('seleccion-rapida-final', {
       body: await page.screenshot(),
