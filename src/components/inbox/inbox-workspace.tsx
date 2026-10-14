@@ -430,9 +430,10 @@ export function InboxWorkspace() {
    * lookup does not retry on every re-render.
    */
   const resolvedIdRef = useRef<string | null>(null);
+  const [lookupErrorId, setLookupErrorId] = useState<string | null>(null);
   useEffect(() => {
     if (!routeConvId || !conversationsLoaded) return;
-    if (conversations.some((c) => c.id === routeConvId)) return;
+    if (activeConversation?.id === routeConvId) return;
     if (resolvedIdRef.current === routeConvId) return;
     resolvedIdRef.current = routeConvId;
 
@@ -452,6 +453,7 @@ export function InboxWorkspace() {
       if (cancelled) return;
 
       if (result.status === "ok") {
+        setLookupErrorId(null);
         setConversations((prev) =>
           prev.some((c) => c.id === result.conversation.id)
             ? prev
@@ -475,6 +477,7 @@ export function InboxWorkspace() {
         // would repeat the mistake P0-BUG-03 fixed for sign-outs.
         // Allow a retry by clearing the guard.
         console.error("[inbox] conversation lookup failed:", result.message);
+        setLookupErrorId(routeConvId);
         resolvedIdRef.current = null;
         return;
       }
@@ -487,8 +490,9 @@ export function InboxWorkspace() {
 
     return () => {
       cancelled = true;
+      if (resolvedIdRef.current === routeConvId) resolvedIdRef.current = null;
     };
-  }, [routeConvId, conversationsLoaded, conversations, router, t]);
+  }, [routeConvId, conversationsLoaded, activeConversation?.id, router, t, resyncToken]);
 
   /**
    * Refetch when the tab regains focus. Background tabs may have their
@@ -515,6 +519,7 @@ export function InboxWorkspace() {
    * separate code path to keep in sync.
    */
   const handleManualRefresh = useCallback(() => {
+    setLookupErrorId(null);
     setResyncToken((n) => n + 1);
   }, []);
 
@@ -655,6 +660,7 @@ export function InboxWorkspace() {
           )}
         >
           <MessageThread
+            initialLookupError={lookupErrorId === routeConvId && !!routeConvId}
             requestedConversationId={routeConvId}
             draft={draft}
             onDraftChange={onDraftChange}

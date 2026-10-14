@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   routeId: 'A',
   push: vi.fn(),
   replace: vi.fn(),
+  resolve: vi.fn(),
   translate: (key: string) => key,
   onMessage: (_event: {
     eventType: string;
@@ -18,7 +19,11 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('next/navigation', () => ({
   useParams: () => ({ conversationId: [mocks.routeId] }),
-  useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
+  useRouter: () => mocks,
+}));
+vi.mock('@/lib/inbox/resolve-conversation', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/inbox/resolve-conversation')>(),
+  resolveConversation: mocks.resolve,
 }));
 vi.mock('next-intl', () => ({ useTranslations: () => mocks.translate }));
 vi.mock('@/lib/supabase/client', () => ({
@@ -76,6 +81,7 @@ vi.mock('@/components/inbox/message-thread', () => ({
     onMessagesLoaded,
     onNewMessage,
     onBack,
+    initialLookupError, onRefresh,
   }: {
     conversation: Conversation | null;
     messages: Message[];
@@ -87,6 +93,8 @@ vi.mock('@/components/inbox/message-thread', () => ({
     ) => void;
     onNewMessage: (message: Message) => void;
     onBack: () => void;
+    initialLookupError?: boolean;
+    onRefresh?: () => void;
   }) => {
     const id = conversation?.id;
     useEffect(() => {
@@ -103,7 +111,7 @@ vi.mock('@/components/inbox/message-thread', () => ({
             <p key={message.id}>{message.content_text}</p>
           ))
         ) : (
-          <p>initial loading</p>
+          initialLookupError ? <><p role="alert">lookup error</p><button onClick={onRefresh}>retry lookup</button></> : <p>initial loading</p>
         )}
         <button onClick={onBack}>close</button>
         <button
@@ -163,4 +171,18 @@ it('an incoming customer message does not delete a pending send', async () => {
   );
   expect(screen.getByText('temp-send')).toBeVisible();
   expect(screen.getByText('live customer')).toBeVisible();
+});
+
+it('shows a retryable error when deep-link metadata fails, then recovers without leaving the Inbox', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const id = '00000000-0000-4000-8000-000000000099';
+  mocks.routeId = id;
+  mocks.resolve.mockResolvedValueOnce({ status: 'error', message: 'offline' });
+  render(<InboxPage />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('lookup error');
+  mocks.resolve.mockResolvedValueOnce({ status: 'ok', conversation: { ...conversations[0], id } });
+  fireEvent.click(screen.getByRole('button', { name: 'retry lookup' }));
+  expect(await screen.findByText(`message ${id}`)).toBeVisible();
+  expect(screen.queryByRole('alert')).toBeNull();
+  log.mockRestore();
 });

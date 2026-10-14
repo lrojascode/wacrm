@@ -77,6 +77,7 @@ function renderTemplateBody(body: string, params: string[]): string {
 }
 
 interface MessageThreadProps {
+  initialLookupError?: boolean;
   requestedConversationId?: string | null;
   draft?: string;
   onDraftChange?: (text: string) => void;
@@ -191,6 +192,7 @@ const DOODLE_BG_CLASSES =
 export function MessageThread({
   conversation: resolvedConversation,
   requestedConversationId,
+  initialLookupError = false,
   draft,
   onDraftChange,
   readingPositions,
@@ -256,16 +258,18 @@ export function MessageThread({
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactionState, setReactionState] = useState<{
     id?: string;
+    generation: number;
     rows: MessageReaction[];
-  }>({ id: conversationId, rows: [] });
+  }>({ id: conversationId, generation: 0, rows: [] });
   const reactions = reactionState.rows;
+  const reactionGeneration = reactionState.generation;
   const setReactions = useCallback(
     (
       value:
         MessageReaction[] | ((rows: MessageReaction[]) => MessageReaction[]),
     ) => {
       setReactionState((current) =>
-        current.id !== conversationId
+        current.id !== conversationId || current.generation !== reactionGeneration
           ? current
           : {
               ...current,
@@ -273,7 +277,7 @@ export function MessageThread({
             },
       );
     },
-    [conversationId],
+    [conversationId, reactionGeneration],
   );
   const handleRefreshClick = useCallback(() => {
     if (syncing) return;
@@ -287,7 +291,7 @@ export function MessageThread({
     setLocalConversationId(conversationId);
     setReplyTo(null);
     setTemplateModalOpen(false);
-    setReactionState({ id: conversationId, rows: [] });
+    setReactionState((previous) => ({ id: conversationId, rows: [], generation: previous.generation + 1 }));
   }
 
   // Profiles are bounded by RLS to rows the current user is allowed to
@@ -1156,7 +1160,7 @@ export function MessageThread({
       >
         {!hasSelection ? (
           emptyState
-        ) : !messagesLoaded && loadError ? (
+        ) : !messagesLoaded && (loadError || initialLookupError) ? (
           <div role="alert" className="flex flex-col items-center gap-3 py-12">
             <p className="text-sm text-muted-foreground">
               {t("loadMessagesError")}
@@ -1249,6 +1253,7 @@ export function MessageThread({
           auto-reply configured. */}
       {hasSelection && messagesLoaded && (
         <AiThreadBanner
+          key={conversation.id}
           conversationId={conversation.id}
           disabled={conversation.ai_autoreply_disabled ?? false}
           handoffSummary={conversation.ai_handoff_summary}
