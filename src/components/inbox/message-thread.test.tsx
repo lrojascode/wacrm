@@ -72,16 +72,31 @@ vi.mock('./message-actions', () => ({
   }) => <div data-message-id={message.id}>{children}</div>,
 }));
 vi.mock('./message-composer', () => ({
-  MessageComposer: ({ onSend }: { onSend: (text: string) => void }) => {
+  MessageComposer: ({
+    onSend,
+    draftText,
+    onDraftChange,
+    loading,
+  }: {
+    onSend: (text: string) => void;
+    draftText?: string;
+    onDraftChange?: (text: string) => void;
+    loading?: boolean;
+  }) => {
     const [draft, setDraft] = useState('');
     return (
       <>
         <textarea
           aria-label="draft"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          disabled={loading}
+          value={draftText ?? draft}
+          onChange={(e) =>
+            onDraftChange
+              ? onDraftChange(e.target.value)
+              : setDraft(e.target.value)
+          }
         />
-        <button onClick={() => onSend(draft)}>send</button>
+        <button onClick={() => onSend(draftText ?? draft)}>send</button>
       </>
     );
   },
@@ -247,9 +262,10 @@ describe('thread synchronization', () => {
     mocks.query.mockReturnValueOnce(pending.promise);
     fireEvent.click(screen.getByRole('button', { name: 'retryLoadMessages' }));
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByTestId('thread-skeleton')).toBeVisible();
     expect(
       screen.getByTestId('message-thread').querySelector('.animate-spin')
-    ).not.toBeNull();
+    ).toBeNull();
     await act(async () => pending.resolve(result([])));
     expect(screen.getByText('noMessagesYet')).toBeVisible();
     const again = deferred();
@@ -346,9 +362,10 @@ describe('thread synchronization', () => {
     expect(screen.getByText('Cliente B')).toBeVisible();
     expect(screen.queryByTestId('original')).toBeNull();
     expect(screen.queryByText('noMessagesYet')).toBeNull();
+    expect(screen.getByTestId('thread-skeleton')).toBeVisible();
     expect(
       screen.getByTestId('message-thread').querySelector('.animate-spin')
-    ).not.toBeNull();
+    ).toBeNull();
     await act(async () => pending.resolve(result([row('B message', 'B')])));
     expect(screen.getByTestId('B message')).toBeVisible();
   });
@@ -458,4 +475,27 @@ describe('reading position', () => {
     expect(thread.scrollTop).toBe(1000);
     expect(screen.getByTestId('sent-id')).toHaveTextContent('mi mensaje');
   });
+});
+
+it('restores a visited chat and its reading position while revalidating its cached messages', async () => {
+  const view = await openThread();
+  const thread = readingGeometry(200);
+  fireEvent.scroll(thread);
+  fireEvent.change(screen.getByLabelText('draft'), {
+    target: { value: 'draft A' },
+  });
+  mocks.query.mockResolvedValueOnce(result([row('message B', 'B')]));
+  view.rerender(<Harness id="B" />);
+  expect(screen.getByTestId('message-thread')).toBe(thread);
+  await screen.findByTestId('message B');
+  expect(screen.getByLabelText('draft')).toHaveValue('');
+  const pending = deferred();
+  mocks.query.mockReturnValueOnce(pending.promise);
+  view.rerender(<Harness id="A" />);
+  expect(screen.getByTestId('original')).toBeVisible();
+  expect(screen.queryByTestId('thread-skeleton')).toBeNull();
+  expect(screen.getByLabelText('draft')).toHaveValue('draft A');
+  expect(thread.scrollTop).toBe(200);
+  await act(async () => pending.resolve(result([row()])));
+  expect(thread.scrollTop).toBe(200);
 });

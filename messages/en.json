@@ -252,6 +252,7 @@
       "deleteError": "Couldn't delete the conversation"
     },
     "messageThread": {
+      "loadingConversation": "Loading conversation…",
       "loadMessagesError": "Messages could not be loaded.",
       "retryLoadMessages": "Retry",
       "backToConversations": "Back to conversations",

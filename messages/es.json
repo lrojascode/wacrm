@@ -252,6 +252,7 @@
       "deleteError": "No se pudo borrar la conversación"
     },
     "messageThread": {
+      "loadingConversation": "Cargando conversación…",
       "loadMessagesError": "No se pudieron cargar los mensajes.",
       "retryLoadMessages": "Reintentar",
       "backToConversations": "Volver a conversaciones",

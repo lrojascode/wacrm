@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react';
 import type { Message } from '@/types';
 
-interface ReadingPosition {
+export interface ReadingPosition {
   top: number;
   atBottom: boolean;
   anchorId?: string;
@@ -29,7 +29,8 @@ function readPosition(element: HTMLDivElement): ReadingPosition {
 export function useMessageScroll(
   conversationId: string | undefined,
   messages: Message[],
-  loaded: boolean
+  loaded: boolean,
+  savedPositions?: RefObject<Map<string, ReadingPosition>>
 ) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const position = useRef<ReadingPosition | null>(null);
@@ -41,9 +42,13 @@ export function useMessageScroll(
   const followOwnSend = useCallback(() => {
     ownSend.current = true;
   }, []);
-  const onScroll = useCallback(() => {
-    if (scrollRef.current) position.current = readPosition(scrollRef.current);
-  }, []);
+  const onScroll = () => {
+    if (scrollRef.current) {
+      position.current = readPosition(scrollRef.current);
+      if (conversationId && loaded)
+        savedPositions?.current.set(conversationId, position.current);
+    }
+  };
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -51,9 +56,17 @@ export function useMessageScroll(
     const before = previous.current;
     const firstLoad =
       before.id !== conversationId || (!before.loaded && loaded);
+    const saved =
+      firstLoad && conversationId
+        ? savedPositions?.current.get(conversationId)
+        : undefined;
+    if (firstLoad) {
+      position.current = saved ?? null;
+      ownSend.current = false;
+    }
     const appended = messages.some((message) => !before.ids.has(message.id));
     if (
-      firstLoad ||
+      (firstLoad && !saved) ||
       ownSend.current ||
       (appended && position.current?.atBottom)
     ) {
@@ -82,7 +95,9 @@ export function useMessageScroll(
       ids: new Set(messages.map((m) => m.id)),
     };
     position.current = readPosition(element);
-  }, [conversationId, messages, loaded]);
+    if (loaded && conversationId)
+      savedPositions?.current.set(conversationId, position.current);
+  }, [conversationId, messages, loaded, savedPositions]);
 
   return { scrollRef, onScroll, followOwnSend };
 }

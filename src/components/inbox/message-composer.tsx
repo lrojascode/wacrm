@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useState,
-  useRef,
-  useCallback,
-  useEffect,
-  KeyboardEvent,
-} from "react";
+import { useState, useRef, useCallback, useEffect, KeyboardEvent } from "react";
 import {
   Send,
   LayoutTemplate,
@@ -111,10 +105,16 @@ interface MediaDraft {
 
 interface MessageComposerProps {
   conversationId: string;
+  loading?: boolean;
+  draftText?: string;
+  onDraftChange?: (text: string) => void;
   sessionExpired: boolean;
   onSend: (text: string, replyToId?: string) => void;
   onSendMedia: (payload: SendMediaPayload) => void;
-  onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
+  onSendInteractive: (
+    payload: InteractiveMessagePayload,
+    replyToId?: string,
+  ) => void;
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
@@ -133,6 +133,9 @@ const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 
 export function MessageComposer({
   conversationId,
+  loading = false,
+  draftText,
+  onDraftChange,
   sessionExpired,
   onSend,
   onSendMedia,
@@ -143,7 +146,16 @@ export function MessageComposer({
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
 
-  const [text, setText] = useState("");
+  const [localText, setLocalText] = useState("");
+  const text = draftText ?? localText;
+  const setText = useCallback(
+    (value: string | ((previous: string) => string)) => {
+      const next = typeof value === "function" ? value(text) : value;
+      if (onDraftChange) onDraftChange(next);
+      else setLocalText(next);
+    },
+    [onDraftChange, text],
+  );
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -182,6 +194,7 @@ export function MessageComposer({
   const [recordSeconds, setRecordSeconds] = useState(0);
   const recorderRef = useRef<import("opus-recorder").default | null>(null);
   const cancelledRef = useRef(false);
+  const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Viewers (read-only role) can browse the inbox but never send.
@@ -190,7 +203,7 @@ export function MessageComposer({
   const canSend = useCan("send-messages");
   const readOnly = !canSend;
   // Media (like free-form text) is only allowed inside the 24h window.
-  const inputsDisabled = readOnly || sessionExpired;
+  const inputsDisabled = loading || readOnly || sessionExpired;
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -203,7 +216,9 @@ export function MessageComposer({
   // navigation doesn't leak the mic, and GC a staged-but-unsent
   // attachment so it doesn't orphan in the bucket.
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       clearTimer();
       cancelledRef.current = true;
       // stop() releases the mic stream + audio context inside opus-recorder.
@@ -222,7 +237,7 @@ export function MessageComposer({
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+    if (!trimmed || sending || inputsDisabled) return;
 
     setSending(true);
     try {
@@ -234,7 +249,7 @@ export function MessageComposer({
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [text, sending, inputsDisabled, onSend, replyTo?.id, setText]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -243,7 +258,7 @@ export function MessageComposer({
         handleSend();
       }
     },
-    [handleSend]
+    [handleSend],
   );
 
   const handleChange = useCallback(
@@ -251,14 +266,14 @@ export function MessageComposer({
       setText(e.target.value);
       adjustHeight();
     },
-    [adjustHeight]
+    [adjustHeight, setText],
   );
 
   // Ask the AI assistant for a suggested reply and drop it into the
   // composer for the agent to edit + send. Read-only server-side —
   // nothing is sent until the agent hits Send.
   const handleDraft = useCallback(async () => {
-    if (drafting) return;
+    if (drafting || inputsDisabled) return;
     setDrafting(true);
     try {
       const res = await fetch("/api/ai/draft", {
@@ -269,7 +284,9 @@ export function MessageComposer({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.code === "ai_not_configured") {
-          toast.error("AI isn't set up yet — enable it in Settings → AI Assistant.");
+          toast.error(
+            "AI isn't set up yet — enable it in Settings → AI Assistant.",
+          );
         } else {
           toast.error(data.error ?? "Couldn't draft a reply.");
         }
@@ -280,6 +297,7 @@ export function MessageComposer({
         toast.error("The assistant didn't return a reply.");
         return;
       }
+      if (!mountedRef.current) return;
       setText(draftText);
       // Let the textarea grow to fit and drop the cursor at the end so
       // the agent can tweak immediately.
@@ -296,7 +314,7 @@ export function MessageComposer({
     } finally {
       setDrafting(false);
     }
-  }, [drafting, conversationId, adjustHeight]);
+  }, [drafting, inputsDisabled, conversationId, adjustHeight, setText]);
 
   // ---- Interactive message + quick replies --------------------------
 
@@ -309,6 +327,7 @@ export function MessageComposer({
   );
 
   const sendInteractive = useCallback(() => {
+    if (inputsDisabled) return;
     const result = validateInteractivePayload(interactivePayload);
     if (!result.ok) {
       toast.error(result.error);
@@ -317,7 +336,13 @@ export function MessageComposer({
     onSendInteractive(interactivePayload, replyTo?.id);
     setInteractiveOpen(false);
     onClearReply?.();
-  }, [interactivePayload, onSendInteractive, replyTo?.id, onClearReply]);
+  }, [
+    inputsDisabled,
+    interactivePayload,
+    onSendInteractive,
+    replyTo?.id,
+    onClearReply,
+  ]);
 
   // Persist the current builder payload as a reusable interactive snippet.
   const saveAsQuickReply = useCallback(async () => {
@@ -326,9 +351,7 @@ export function MessageComposer({
       toast.error(result.error);
       return;
     }
-    const title = window
-      .prompt(t("quickReplyNamePrompt"))
-      ?.trim();
+    const title = window.prompt(t("quickReplyNamePrompt"))?.trim();
     if (!title) return;
     setSavingQuickReply(true);
     try {
@@ -378,7 +401,7 @@ export function MessageComposer({
         }
       });
     },
-    [openInteractiveBuilder, adjustHeight],
+    [openInteractiveBuilder, adjustHeight, setText],
   );
 
   // Upload a captured file to chat-media and stage it as a draft.
@@ -398,10 +421,23 @@ export function MessageComposer({
       }
       setBusy(true);
       try {
-        const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
+        const { publicUrl, path } = await uploadAccountMedia(
+          CHAT_MEDIA_BUCKET,
+          file,
+        );
+        if (!mountedRef.current) {
+          removeStaged(path);
+          return;
+        }
         // Replacing an existing draft? GC the previous object first.
         removeStaged(draftRef.current?.path);
-        setDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        setDraft({
+          kind,
+          mediaUrl: publicUrl,
+          path,
+          filename: file.name,
+          caption: "",
+        });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Upload failed.");
       } finally {
@@ -426,9 +462,13 @@ export function MessageComposer({
     async (bytes: Uint8Array) => {
       // Uint8Array is a valid BlobPart at runtime; the cast sidesteps the
       // lib.dom ArrayBufferLike-vs-ArrayBuffer generic mismatch.
-      const file = new File([bytes as unknown as BlobPart], `voice-${Date.now()}.ogg`, {
-        type: "audio/ogg",
-      });
+      const file = new File(
+        [bytes as unknown as BlobPart],
+        `voice-${Date.now()}.ogg`,
+        {
+          type: "audio/ogg",
+        },
+      );
       if (file.size === 0) return; // cancelled / empty take
       if (file.size > MEDIA_MAX_BYTES_BY_KIND.audio) {
         toast.error("Recording is too long (over 16 MB).");
@@ -436,9 +476,22 @@ export function MessageComposer({
       }
       setBusy(true);
       try {
-        const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
+        const { publicUrl, path } = await uploadAccountMedia(
+          CHAT_MEDIA_BUCKET,
+          file,
+        );
+        if (!mountedRef.current) {
+          removeStaged(path);
+          return;
+        }
         removeStaged(draftRef.current?.path);
-        setDraft({ kind: "audio", mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        setDraft({
+          kind: "audio",
+          mediaUrl: publicUrl,
+          path,
+          filename: file.name,
+          caption: "",
+        });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Upload failed.");
       } finally {
@@ -450,7 +503,10 @@ export function MessageComposer({
 
   const startRecording = useCallback(async () => {
     if (inputsDisabled || busy || recording) return;
-    if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof AudioContext === "undefined"
+    ) {
       toast.error("Voice recording isn't supported in this browser.");
       return;
     }
@@ -458,6 +514,7 @@ export function MessageComposer({
       // Lazy-load the encoder (≈400 KB worker) only when the user records,
       // keeping it out of the main bundle.
       const { default: Recorder } = await import("opus-recorder");
+      if (!mountedRef.current) return;
       const recorder = new Recorder({
         encoderPath: OPUS_ENCODER_PATH,
         numberOfChannels: 1,
@@ -472,9 +529,16 @@ export function MessageComposer({
       };
       recorderRef.current = recorder;
       await recorder.start();
+      if (!mountedRef.current) {
+        await recorder.stop().catch(() => {});
+        return;
+      }
       setRecording(true);
       setRecordSeconds(0);
-      timerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+      timerRef.current = setInterval(
+        () => setRecordSeconds((s) => s + 1),
+        1000,
+      );
     } catch {
       void recorderRef.current?.stop().catch(() => {});
       recorderRef.current = null;
@@ -506,7 +570,7 @@ export function MessageComposer({
   // ---- Draft send / discard -----------------------------------------
 
   const sendDraft = useCallback(() => {
-    if (!draft || busy) return;
+    if (!draft || busy || inputsDisabled) return;
     onSendMedia({
       kind: draft.kind,
       mediaUrl: draft.mediaUrl,
@@ -521,7 +585,7 @@ export function MessageComposer({
     // The object is now owned by the sent message — clear without GC.
     setDraft(null);
     onClearReply?.();
-  }, [draft, busy, onSendMedia, replyTo?.id, onClearReply]);
+  }, [draft, busy, inputsDisabled, onSendMedia, replyTo?.id, onClearReply]);
 
   // Discard GCs the staged object — it was uploaded but never sent.
   const discardDraft = useCallback(() => {
@@ -548,13 +612,12 @@ export function MessageComposer({
       )}
       {sessionExpired && (
         <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
-          <p className="text-xs text-amber-400">
-            {t("sessionExpiredHint")}
-          </p>
+          <p className="text-xs text-amber-400">{t("sessionExpiredHint")}</p>
           <Button
             variant="ghost"
             size="sm"
             className="h-7 text-xs text-amber-400 hover:text-amber-300"
+            disabled={loading}
             onClick={onOpenTemplates}
           >
             <LayoutTemplate className="mr-1 h-3 w-3" />
@@ -567,6 +630,7 @@ export function MessageComposer({
       <input
         ref={imageInputRef}
         type="file"
+        disabled={inputsDisabled}
         accept={PICKER_ACCEPT.image}
         className="hidden"
         onChange={(e) => {
@@ -577,6 +641,7 @@ export function MessageComposer({
       <input
         ref={videoInputRef}
         type="file"
+        disabled={inputsDisabled}
         accept={PICKER_ACCEPT.video}
         className="hidden"
         onChange={(e) => {
@@ -587,6 +652,7 @@ export function MessageComposer({
       <input
         ref={documentInputRef}
         type="file"
+        disabled={inputsDisabled}
         accept={PICKER_ACCEPT.document}
         className="hidden"
         onChange={(e) => {
@@ -610,7 +676,10 @@ export function MessageComposer({
         <div className="flex items-center gap-3 rounded-xl border border-border bg-muted px-4 py-2.5">
           <span className="flex h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />
           <span className="flex-1 text-sm text-foreground">
-            {t("recording", { current: formatDuration(recordSeconds), max: formatDuration(MAX_RECORDING_SECONDS) })}
+            {t("recording", {
+              current: formatDuration(recordSeconds),
+              max: formatDuration(MAX_RECORDING_SECONDS),
+            })}
           </span>
           <button
             type="button"
@@ -649,7 +718,10 @@ export function MessageComposer({
                 <Paperclip className="h-4 w-4" />
               )}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="border-border bg-popover">
+            <DropdownMenuContent
+              align="start"
+              className="border-border bg-popover"
+            >
               <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
                 <ImageIcon className="mr-2 h-4 w-4" />
                 {t("photo")}
@@ -658,7 +730,9 @@ export function MessageComposer({
                 <Video className="mr-2 h-4 w-4" />
                 {t("video")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
+              <DropdownMenuItem
+                onClick={() => documentInputRef.current?.click()}
+              >
                 <FileText className="mr-2 h-4 w-4" />
                 {t("document")}
               </DropdownMenuItem>
@@ -685,7 +759,10 @@ export function MessageComposer({
             >
               <Plus className="h-4 w-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="border-border bg-popover">
+            <DropdownMenuContent
+              align="start"
+              className="border-border bg-popover"
+            >
               <DropdownMenuItem onClick={() => openInteractiveBuilder()}>
                 <MessageSquareDashed className="mr-2 h-4 w-4" />
                 {t("interactiveMessage")}
@@ -704,6 +781,7 @@ export function MessageComposer({
             gateReason="send messages"
             title={readOnly ? undefined : t("sendTemplate")}
             className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+            disabled={loading}
             onClick={onOpenTemplates}
           >
             <LayoutTemplate className="h-4 w-4" />
@@ -714,7 +792,7 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={drafting}
+            disabled={drafting || inputsDisabled}
             title={readOnly ? undefined : t("draftWithAI")}
             className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-primary"
             onClick={handleDraft}
@@ -738,15 +816,15 @@ export function MessageComposer({
                   ? t("sessionExpiredPlaceholder")
                   : t("typeMessagePlaceholder")
             }
-            disabled={sessionExpired || readOnly}
+            disabled={inputsDisabled}
             rows={1}
             // Textarea keeps its own inline title — the GatedButton
             // wrapping pattern doesn't apply to non-button inputs.
             // The placeholder text also surfaces the read-only state.
             title={readOnly ? t("readOnlyTitle") : undefined}
             className={cn(
-              "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+              "border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-xl border px-4 py-2.5 text-sm transition-colors outline-none",
+              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50",
             )}
           />
 
@@ -754,7 +832,8 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={!text.trim() || sessionExpired || sending}
+            disabled={!text.trim() || inputsDisabled || sending}
+            aria-label={t("send")}
             onClick={handleSend}
             className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
           >
@@ -851,7 +930,11 @@ function MediaDraftPreview({
             />
           )}
           {draft.kind === "video" && (
-            <video src={draft.mediaUrl} controls className="max-h-40 rounded-lg" />
+            <video
+              src={draft.mediaUrl}
+              controls
+              className="max-h-40 rounded-lg"
+            />
           )}
           {draft.kind === "audio" && (
             <audio src={draft.mediaUrl} controls className="w-full" />
@@ -896,7 +979,7 @@ function MediaDraftPreview({
           disabled={busy}
           onClick={onSend}
           className={cn(
-            "h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40",
+            "bg-primary hover:bg-primary/90 h-9 w-9 shrink-0 p-0 disabled:opacity-40",
             draft.kind === "audio" && "ml-auto",
           )}
         >

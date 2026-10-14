@@ -118,7 +118,7 @@ vi.mock('@/components/inbox/message-thread', () => ({
   },
 }));
 
-const { default: InboxPage } = await import('./page');
+const { InboxWorkspace: InboxPage } = await import('./inbox-workspace');
 beforeEach(() => {
   mocks.routeId = 'A';
 });
