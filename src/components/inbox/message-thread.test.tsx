@@ -12,6 +12,7 @@ import { useInboxMessages } from '@/hooks/use-inbox-messages';
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
+  reactions: vi.fn(),
   translate: (key: string) => key,
 }));
 vi.mock('next-intl', () => ({
@@ -38,7 +39,7 @@ vi.mock('@/lib/supabase/client', () => ({
         eq: (_key: string, value: string) => {
           id = value;
           return table === 'message_reactions'
-            ? Promise.resolve({ data: [], error: null })
+            ? mocks.reactions(id)
             : query;
         },
         order: () =>
@@ -56,8 +57,8 @@ vi.mock('@/lib/supabase/client', () => ({
   }),
 }));
 vi.mock('./message-bubble', () => ({
-  MessageBubble: ({ message }: { message: Message }) => (
-    <p data-testid={message.id} data-status={message.status}>
+  MessageBubble: ({ message, reactions }: { message: Message; reactions?: unknown[] }) => (
+    <p data-testid={message.id} data-status={message.status} data-reactions={reactions?.length ?? 0}>
       {message.content_text}
     </p>
   ),
@@ -65,23 +66,39 @@ vi.mock('./message-bubble', () => ({
 vi.mock('./message-actions', () => ({
   MessageActions: ({
     children,
-    message,
+    message, onReact,
   }: {
+    onReact?: (emoji: string) => void;
     children: ReactNode;
     message: Message;
-  }) => <div data-message-id={message.id}>{children}</div>,
+  }) => <div data-message-id={message.id}>{children}<button onClick={() => onReact?.("👍")}>react {message.id}</button></div>,
 }));
 vi.mock('./message-composer', () => ({
-  MessageComposer: ({ onSend }: { onSend: (text: string) => void }) => {
+  MessageComposer: ({
+    onSend,
+    draftText,
+    onDraftChange,
+    loading,
+  }: {
+    onSend: (text: string) => void;
+    draftText?: string;
+    onDraftChange?: (text: string) => void;
+    loading?: boolean;
+  }) => {
     const [draft, setDraft] = useState('');
     return (
       <>
         <textarea
           aria-label="draft"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          disabled={loading}
+          value={draftText ?? draft}
+          onChange={(e) =>
+            onDraftChange
+              ? onDraftChange(e.target.value)
+              : setDraft(e.target.value)
+          }
         />
-        <button onClick={() => onSend(draft)}>send</button>
+        <button onClick={() => onSend(draftText ?? draft)}>send</button>
       </>
     );
   },
@@ -177,6 +194,7 @@ function readingGeometry(top = 200, height = 1000) {
 
 beforeEach(() => {
   mocks.query.mockReset();
+  mocks.reactions.mockReset().mockResolvedValue({ data: [], error: null });
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -247,9 +265,10 @@ describe('thread synchronization', () => {
     mocks.query.mockReturnValueOnce(pending.promise);
     fireEvent.click(screen.getByRole('button', { name: 'retryLoadMessages' }));
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByTestId('thread-skeleton')).toBeVisible();
     expect(
       screen.getByTestId('message-thread').querySelector('.animate-spin')
-    ).not.toBeNull();
+    ).toBeNull();
     await act(async () => pending.resolve(result([])));
     expect(screen.getByText('noMessagesYet')).toBeVisible();
     const again = deferred();
@@ -346,9 +365,10 @@ describe('thread synchronization', () => {
     expect(screen.getByText('Cliente B')).toBeVisible();
     expect(screen.queryByTestId('original')).toBeNull();
     expect(screen.queryByText('noMessagesYet')).toBeNull();
+    expect(screen.getByTestId('thread-skeleton')).toBeVisible();
     expect(
       screen.getByTestId('message-thread').querySelector('.animate-spin')
-    ).not.toBeNull();
+    ).toBeNull();
     await act(async () => pending.resolve(result([row('B message', 'B')])));
     expect(screen.getByTestId('B message')).toBeVisible();
   });
@@ -458,4 +478,43 @@ describe('reading position', () => {
     expect(thread.scrollTop).toBe(1000);
     expect(screen.getByTestId('sent-id')).toHaveTextContent('mi mensaje');
   });
+});
+
+it('restores a visited chat and its reading position while revalidating its cached messages', async () => {
+  const view = await openThread();
+  const thread = readingGeometry(200);
+  fireEvent.scroll(thread);
+  fireEvent.change(screen.getByLabelText('draft'), {
+    target: { value: 'draft A' },
+  });
+  mocks.query.mockResolvedValueOnce(result([row('message B', 'B')]));
+  view.rerender(<Harness id="B" />);
+  expect(screen.getByTestId('message-thread')).toBe(thread);
+  await screen.findByTestId('message B');
+  expect(screen.getByLabelText('draft')).toHaveValue('');
+  const pending = deferred();
+  mocks.query.mockReturnValueOnce(pending.promise);
+  view.rerender(<Harness id="A" />);
+  expect(screen.getByTestId('original')).toBeVisible();
+  expect(screen.queryByTestId('thread-skeleton')).toBeNull();
+  expect(screen.getByLabelText('draft')).toHaveValue('draft A');
+  expect(thread.scrollTop).toBe(200);
+  await act(async () => pending.resolve(result([row()])));
+  expect(thread.scrollTop).toBe(200);
+});
+
+it('ignores a failed reaction rollback from an abandoned generation even after returning to the same chat', async () => {
+  const view = await openThread();
+  let reject!: (error: Error) => void;
+  vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise((_resolve, no) => { reject = no; })));
+  fireEvent.click(screen.getByRole('button', { name: 'react original' }));
+  mocks.query.mockResolvedValueOnce(result([row('message B', 'B')]));
+  view.rerender(<Harness id="B" />);
+  await screen.findByTestId('message B');
+  mocks.reactions.mockResolvedValueOnce({ data: [{ id: 'fresh-reaction', message_id: 'original', conversation_id: 'A', actor_type: 'agent', actor_id: 'another', emoji: '👍' }], error: null });
+  mocks.query.mockResolvedValueOnce(result([row()]));
+  view.rerender(<Harness id="A" />);
+  await waitFor(() => expect(screen.getByTestId('original')).toHaveAttribute('data-reactions', '1'));
+  await act(async () => reject(new Error('late failure')));
+  expect(screen.getByTestId('original')).toHaveAttribute('data-reactions', '1');
 });

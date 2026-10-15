@@ -30,12 +30,27 @@ interface ContactSidebarProps {
   conversationId?: string | null;
 }
 
-export function ContactSidebar({ contact, conversationId }: ContactSidebarProps) {
+export function ContactSidebar(props: ContactSidebarProps) {
+  return (
+    <div data-testid="contact-panel" className="h-full w-70">
+      <ContactSidebarContent
+        key={`${props.contact?.id ?? "pending"}:${props.conversationId ?? ""}`}
+        {...props}
+      />
+    </div>
+  );
+}
+
+function ContactSidebarContent({
+  contact,
+  conversationId,
+}: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
   const dateLocale = dateFnsLocale(useLocale());
 
   const { accountId, isViewer } = useAuth();
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
@@ -54,55 +69,65 @@ export function ContactSidebar({ contact, conversationId }: ContactSidebarProps)
     return () => clearInterval(timer);
   }, []);
 
-  const fetchContactData = useCallback(async () => {
-    if (!contact) return;
-    setNowTimestamp(Date.now());
-
-    const supabase = createClient();
-
-    // Fetch deals, notes, tasks, and tags in parallel
-    const [dealsRes, notesRes, tasksRes, tagsRes] = await Promise.all([
-      supabase
-        .from("deals")
-        .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_notes")
-        .select("*")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_tasks")
-        .select("*")
-        .eq("contact_id", contact.id)
-        .order("due_at", { ascending: true }),
-      supabase
-        .from("contact_tags")
-        .select("id, tag_id, tags(*)")
-        .eq("contact_id", contact.id),
-    ]);
-
-    if (dealsRes.data) setDeals(dealsRes.data);
-    if (notesRes.data) setNotes(notesRes.data);
-    if (tasksRes.data) setTasks(tasksRes.data);
-    if (tagsRes.data) {
-      const mapped = tagsRes.data
-        .filter((ct: Record<string, unknown>) => ct.tags)
-        .map((ct: Record<string, unknown>) => ({
-          ...(ct.tags as Tag),
-          contact_tag_id: ct.id as string,
-        }));
-      setTags(mapped);
-    }
-  }, [contact]);
-
-  // Load on contact change. setContactData/setTags run inside async
-  // Supabase callbacks, not synchronously in the effect body.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchContactData();
-  }, [fetchContactData]);
+    if (!contact) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    void (async () => {
+      const supabase = createClient();
+
+      // Fetch deals, notes, tasks, and tags in parallel
+      const [dealsRes, notesRes, tasksRes, tagsRes] = await Promise.all([
+        supabase
+          .from("deals")
+          .select("*, stage:pipeline_stages(*)")
+          .eq("contact_id", contact.id)
+          .abortSignal(controller.signal)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("contact_notes")
+          .select("*")
+          .eq("contact_id", contact.id)
+          .abortSignal(controller.signal)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("contact_tasks")
+          .select("*")
+          .eq("contact_id", contact.id)
+          .abortSignal(controller.signal)
+          .order("due_at", { ascending: true }),
+        supabase
+          .from("contact_tags")
+          .select("id, tag_id, tags(*)")
+          .eq("contact_id", contact.id)
+          .abortSignal(controller.signal),
+      ]);
+
+      if (cancelled) return;
+      if (dealsRes.data) setDeals(dealsRes.data);
+      if (notesRes.data) setNotes(notesRes.data);
+      if (tasksRes.data) setTasks(tasksRes.data);
+      if (tagsRes.data) {
+        const mapped = tagsRes.data
+          .filter((ct: Record<string, unknown>) => ct.tags)
+          .map((ct: Record<string, unknown>) => ({
+            ...(ct.tags as Tag),
+            contact_tag_id: ct.id as string,
+          }));
+        setTags(mapped);
+      }
+    })()
+      .catch((error) => {
+        if (!cancelled) console.error("Failed to fetch contact data:", error);
+      })
+      .finally(() => {
+        if (!cancelled) setDataLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [contact]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -176,50 +201,71 @@ export function ContactSidebar({ contact, conversationId }: ContactSidebarProps)
     if (error || !data) {
       toast.error(tSidebar("taskCreateError"));
     } else {
-      setTasks((prev) => [...prev, data].sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime()));
+      setTasks((prev) =>
+        [...prev, data].sort(
+          (a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime(),
+        ),
+      );
       setNewTaskTitle("");
       setNewTaskDueAt("");
     }
     setAddingTask(false);
-  }, [contact, newTaskTitle, newTaskDueAt, accountId, conversationId, tSidebar]);
+  }, [
+    contact,
+    newTaskTitle,
+    newTaskDueAt,
+    accountId,
+    conversationId,
+    tSidebar,
+  ]);
 
-  const handleToggleTask = useCallback(async (task: ContactTask) => {
-    const supabase = createClient();
-    const now = new Date().toISOString();
-    const newCompletedAt = task.completed_at ? null : now;
-    const newNotifiedAt = newCompletedAt ? task.notified_at : null;
+  const handleToggleTask = useCallback(
+    async (task: ContactTask) => {
+      const supabase = createClient();
+      const now = new Date().toISOString();
+      const newCompletedAt = task.completed_at ? null : now;
+      const newNotifiedAt = newCompletedAt ? task.notified_at : null;
 
-    // Optimistic local update
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === task.id
-          ? { ...t, completed_at: newCompletedAt, notified_at: newNotifiedAt, updated_at: now }
-          : t,
-      ),
-    );
-
-    const updatePayload = newCompletedAt
-      ? { completed_at: newCompletedAt, updated_at: now }
-      : { completed_at: null, notified_at: null, updated_at: now };
-
-    const { error } = await supabase
-      .from("contact_tasks")
-      .update(updatePayload)
-      .eq("id", task.id);
-
-    if (error) {
-      toast.error(tSidebar("taskUpdateError"));
-      // Revert optimistic update
+      // Optimistic local update
       setTasks((prev) =>
-        prev.map((t) => (t.id === task.id ? task : t)),
+        prev.map((t) =>
+          t.id === task.id
+            ? {
+                ...t,
+                completed_at: newCompletedAt,
+                notified_at: newNotifiedAt,
+                updated_at: now,
+              }
+            : t,
+        ),
       );
-    }
-  }, [tSidebar]);
+
+      const updatePayload = newCompletedAt
+        ? { completed_at: newCompletedAt, updated_at: now }
+        : { completed_at: null, notified_at: null, updated_at: now };
+
+      const { error } = await supabase
+        .from("contact_tasks")
+        .update(updatePayload)
+        .eq("id", task.id);
+
+      if (error) {
+        toast.error(tSidebar("taskUpdateError"));
+        // Revert optimistic update
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+      }
+    },
+    [tSidebar],
+  );
 
   if (!contact) {
     return (
       <div className="flex h-full w-70 items-center justify-center border-l border-border bg-card">
-        <p className="text-sm text-muted-foreground">{tThread("selectConversation")}</p>
+        <p className="text-sm text-muted-foreground">
+          {conversationId
+            ? tThread("loadingConversation")
+            : tThread("selectConversation")}
+        </p>
       </div>
     );
   }
@@ -278,225 +324,249 @@ export function ContactSidebar({ contact, conversationId }: ContactSidebarProps)
           {/* Divider */}
           <div className="my-4 border-t border-border" />
 
-          {/* Tags */}
-          <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <TagIcon className="h-3 w-3" />
-              {tSidebar("tags")}
+          {!dataLoaded ? (
+            <div
+              data-testid="contact-skeleton"
+              aria-hidden="true"
+              className="space-y-4"
+            >
+              {Array.from({ length: 4 }, (_, i) => (
+                <div key={i} className="bg-muted/60 h-20 rounded-lg" />
+              ))}
             </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {tags.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">{tSidebar("noTags")}</p>
-              ) : (
-                tags.map((tag) => (
-                  <span
-                    key={tag.contact_tag_id}
-                    className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    style={{
-                      backgroundColor: `${tag.color}20`,
-                      color: tag.color,
-                    }}
-                  >
-                    {tag.name}
-                  </span>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="my-4 border-t border-border" />
-
-          {/* Active Deals */}
-          <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <DollarSign className="h-3 w-3" />
-              {tSidebar("deals")}
-            </div>
-            <div className="mt-2 space-y-2">
-              {deals.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">{tSidebar("noDeals")}</p>
-              ) : (
-                deals.map((deal) => (
-                  <div
-                    key={deal.id}
-                    className="rounded-lg bg-muted px-3 py-2"
-                  >
-                    <p className="text-sm font-medium text-foreground">
-                      {deal.title}
+          ) : (
+            <>
+              {/* Tags */}
+              <div>
+                <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <TagIcon className="h-3 w-3" />
+                  {tSidebar("tags")}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {tags.length === 0 ? (
+                    <p className="px-1 text-xs text-muted-foreground">
+                      {tSidebar("noTags")}
                     </p>
-                    <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        {deal.currency ?? "$"}
-                        {deal.value.toLocaleString()}
+                  ) : (
+                    tags.map((tag) => (
+                      <span
+                        key={tag.contact_tag_id}
+                        className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                        style={{
+                          backgroundColor: `${tag.color}20`,
+                          color: tag.color,
+                        }}
+                      >
+                        {tag.name}
                       </span>
-                      {deal.stage && (
-                        <span
-                          className="rounded-full px-1.5 py-0.5 text-[10px]"
-                          style={{
-                            backgroundColor: `${deal.stage.color}20`,
-                            color: deal.stage.color,
-                          }}
-                        >
-                          {deal.stage.name}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="my-4 border-t border-border" />
-
-          {/* Notes */}
-          <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <StickyNote className="h-3 w-3" />
-              {tSidebar("notes")}
-            </div>
-            <div className="mt-2">
-              <div className="flex gap-2">
-                <textarea
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  placeholder={tSidebar("addNotePlaceholder")}
-                  rows={2}
-                  className="flex-1 resize-none rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
-                />
-                <Button
-                  size="sm"
-                  className="h-auto bg-primary px-2 hover:bg-primary/90"
-                  onClick={handleAddNote}
-                  disabled={!newNote.trim() || addingNote}
-                >
-                  <Plus className="h-3 w-3" />
-                </Button>
+                    ))
+                  )}
+                </div>
               </div>
 
-              <div className="mt-2 space-y-2">
-                {notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="rounded-lg bg-muted px-3 py-2"
-                  >
-                    <p className="whitespace-pre-wrap text-xs text-muted-foreground">
-                      {note.note_text}
+              {/* Divider */}
+              <div className="my-4 border-t border-border" />
+
+              {/* Active Deals */}
+              <div>
+                <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <DollarSign className="h-3 w-3" />
+                  {tSidebar("deals")}
+                </div>
+                <div className="mt-2 space-y-2">
+                  {deals.length === 0 ? (
+                    <p className="px-1 text-xs text-muted-foreground">
+                      {tSidebar("noDeals")}
                     </p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">
-                      {/* `PP` is date-fns' localized date token, so the
+                  ) : (
+                    deals.map((deal) => (
+                      <div
+                        key={deal.id}
+                        className="rounded-lg bg-muted px-3 py-2"
+                      >
+                        <p className="text-sm font-medium text-foreground">
+                          {deal.title}
+                        </p>
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                          <span>
+                            {deal.currency ?? "$"}
+                            {deal.value.toLocaleString()}
+                          </span>
+                          {deal.stage && (
+                            <span
+                              className="rounded-full px-1.5 py-0.5 text-[10px]"
+                              style={{
+                                backgroundColor: `${deal.stage.color}20`,
+                                color: deal.stage.color,
+                              }}
+                            >
+                              {deal.stage.name}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="my-4 border-t border-border" />
+
+              {/* Notes */}
+              <div>
+                <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <StickyNote className="h-3 w-3" />
+                  {tSidebar("notes")}
+                </div>
+                <div className="mt-2">
+                  <div className="flex gap-2">
+                    <textarea
+                      value={newNote}
+                      onChange={(e) => setNewNote(e.target.value)}
+                      placeholder={tSidebar("addNotePlaceholder")}
+                      rows={2}
+                      className="flex-1 resize-none rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
+                    />
+                    <Button
+                      size="sm"
+                      className="h-auto bg-primary px-2 hover:bg-primary/90"
+                      onClick={handleAddNote}
+                      disabled={!newNote.trim() || addingNote}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+
+                  <div className="mt-2 space-y-2">
+                    {notes.map((note) => (
+                      <div
+                        key={note.id}
+                        className="rounded-lg bg-muted px-3 py-2"
+                      >
+                        <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                          {note.note_text}
+                        </p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          {/* `PP` is date-fns' localized date token, so the
                           order follows the locale — "10 de ago de 2026"
                           rather than the English "ago 10, 2026" a
                           literal "MMM d, yyyy" would produce. The time
                           stays an explicit 24h HH:mm, as everywhere
                           else in the inbox. */}
-                      {format(new Date(note.created_at), "PP HH:mm", {
-                        locale: dateLocale,
-                      })}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="my-4 border-t border-border" />
-
-          {/* Tasks */}
-          <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <CalendarCheck className="h-3 w-3" />
-              {tSidebar("tasks")}
-            </div>
-            <div className="mt-2 space-y-2">
-              {!isViewer && (
-                <div className="space-y-1.5">
-                  <input
-                    type="text"
-                    value={newTaskTitle}
-                    onChange={(e) => setNewTaskTitle(e.target.value)}
-                    placeholder={tSidebar("addTaskPlaceholder")}
-                    className="w-full rounded-lg border border-border bg-muted px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
-                  />
-                  <div className="flex gap-2">
-                    <input
-                      type="datetime-local"
-                      value={newTaskDueAt}
-                      onChange={(e) => setNewTaskDueAt(e.target.value)}
-                      className="flex-1 rounded-lg border border-border bg-muted px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary/50"
-                    />
-                    <Button
-                      size="sm"
-                      className="h-auto bg-primary px-2 hover:bg-primary/90"
-                      onClick={handleAddTask}
-                      disabled={!newTaskTitle.trim() || !newTaskDueAt || addingTask}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
+                          {format(new Date(note.created_at), "PP HH:mm", {
+                            locale: dateLocale,
+                          })}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              )}
+              </div>
 
-              <div className="mt-2 space-y-1.5">
-                {tasks.length === 0 ? (
-                  <p className="px-1 text-xs text-muted-foreground">{tSidebar("noTasks")}</p>
-                ) : (
-                  tasks.map((task) => {
-                    const isDone = !!task.completed_at;
-                    const isOverdue = !isDone && new Date(task.due_at).getTime() < nowTimestamp;
+              {/* Divider */}
+              <div className="my-4 border-t border-border" />
 
-                    return (
-                      <div
-                        key={task.id}
-                        className={cn(
-                          "flex items-start gap-2 rounded-lg p-2 transition-colors",
-                          isDone
-                            ? "bg-muted/40 opacity-70"
-                            : isOverdue
-                              ? "border border-destructive/30 bg-destructive/5"
-                              : "bg-muted",
-                        )}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => handleToggleTask(task)}
-                          className="mt-0.5 text-muted-foreground hover:text-foreground"
+              {/* Tasks */}
+              <div>
+                <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <CalendarCheck className="h-3 w-3" />
+                  {tSidebar("tasks")}
+                </div>
+                <div className="mt-2 space-y-2">
+                  {!isViewer && (
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        value={newTaskTitle}
+                        onChange={(e) => setNewTaskTitle(e.target.value)}
+                        placeholder={tSidebar("addTaskPlaceholder")}
+                        className="w-full rounded-lg border border-border bg-muted px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="datetime-local"
+                          value={newTaskDueAt}
+                          onChange={(e) => setNewTaskDueAt(e.target.value)}
+                          className="flex-1 rounded-lg border border-border bg-muted px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary/50"
+                        />
+                        <Button
+                          size="sm"
+                          className="h-auto bg-primary px-2 hover:bg-primary/90"
+                          onClick={handleAddTask}
+                          disabled={
+                            !newTaskTitle.trim() || !newTaskDueAt || addingTask
+                          }
                         >
-                          {isDone ? (
-                            <CheckSquare className="h-3.5 w-3.5 text-primary" />
-                          ) : (
-                            <Square className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                        <div className="min-w-0 flex-1">
-                          <p
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-2 space-y-1.5">
+                    {tasks.length === 0 ? (
+                      <p className="px-1 text-xs text-muted-foreground">
+                        {tSidebar("noTasks")}
+                      </p>
+                    ) : (
+                      tasks.map((task) => {
+                        const isDone = !!task.completed_at;
+                        const isOverdue =
+                          !isDone &&
+                          new Date(task.due_at).getTime() < nowTimestamp;
+
+                        return (
+                          <div
+                            key={task.id}
                             className={cn(
-                              "text-xs font-medium leading-snug",
+                              "flex items-start gap-2 rounded-lg p-2 transition-colors",
                               isDone
-                                ? "line-through text-muted-foreground"
+                                ? "bg-muted/40 opacity-70"
                                 : isOverdue
-                                  ? "text-destructive"
-                                  : "text-foreground",
+                                  ? "border-destructive/30 bg-destructive/5 border"
+                                  : "bg-muted",
                             )}
                           >
-                            {task.title}
-                          </p>
-                          <p className="mt-0.5 text-[10px] text-muted-foreground">
-                            {format(new Date(task.due_at), "PP HH:mm", {
-                              locale: dateLocale,
-                            })}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleTask(task)}
+                              className="mt-0.5 text-muted-foreground hover:text-foreground"
+                            >
+                              {isDone ? (
+                                <CheckSquare className="h-3.5 w-3.5 text-primary" />
+                              ) : (
+                                <Square className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <p
+                                className={cn(
+                                  "text-xs leading-snug font-medium",
+                                  isDone
+                                    ? "text-muted-foreground line-through"
+                                    : isOverdue
+                                      ? "text-destructive"
+                                      : "text-foreground",
+                                )}
+                              >
+                                {task.title}
+                              </p>
+                              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                {format(new Date(task.due_at), "PP HH:mm", {
+                                  locale: dateLocale,
+                                })}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </ScrollArea>
     </div>

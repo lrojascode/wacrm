@@ -1,10 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  type RefObject,
+} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
 import { useMessageSync } from "@/hooks/use-message-sync";
+import { ThreadSkeleton } from "./thread-skeleton";
+import type { ReadingPosition } from "@/hooks/use-message-scroll";
 import { useMessageScroll } from "@/hooks/use-message-scroll";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
@@ -69,13 +77,26 @@ function renderTemplateBody(body: string, params: string[]): string {
 }
 
 interface MessageThreadProps {
+  initialLookupError?: boolean;
+  requestedConversationId?: string | null;
+  draft?: string;
+  onDraftChange?: (text: string) => void;
+  readingPositions?: RefObject<Map<string, ReadingPosition>>;
   conversation: Conversation | null;
   contact: Contact | null;
   messages: Message[];
   messagesLoaded: boolean;
-  onMessagesLoaded: (conversationId: string, messages: Message[], baseline: Message[]) => void;
+  onMessagesLoaded: (
+    conversationId: string,
+    messages: Message[],
+    baseline: Message[],
+  ) => void;
   onNewMessage: (message: Message) => void;
-  onUpdateMessage: (id: string, updates: Partial<Message>) => void;
+  onUpdateMessage: (
+    id: string,
+    updates: Partial<Message>,
+    conversationId?: string,
+  ) => void;
   onStatusChange: (conversationId: string, status: ConversationStatus) => void;
   onAssignChange: (
     conversationId: string,
@@ -146,7 +167,11 @@ function groupMessagesByDate(messages: Message[]) {
   return groups;
 }
 
-const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string }[] = [
+const STATUS_OPTIONS: {
+  label: string;
+  value: ConversationStatus;
+  color: string;
+}[] = [
   { label: "Open", value: "open", color: "text-primary" },
   { label: "Pending", value: "pending", color: "text-amber-400" },
   { label: "Closed", value: "closed", color: "text-muted-foreground" },
@@ -165,10 +190,15 @@ const DOODLE_BG_CLASSES =
   "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
 
 export function MessageThread({
-  conversation,
+  conversation: resolvedConversation,
+  requestedConversationId,
+  initialLookupError = false,
+  draft,
+  onDraftChange,
+  readingPositions,
   contact,
   messages,
-  messagesLoaded,
+  messagesLoaded: threadLoaded,
   onMessagesLoaded,
   onNewMessage,
   onUpdateMessage,
@@ -187,26 +217,82 @@ export function MessageThread({
 
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
-  const conversationId = conversation?.id;
-  const { syncing, error: loadError, retry } = useMessageSync(
-    conversationId, messages, onMessagesLoaded, resyncToken,
+  const hasSelection = !!(resolvedConversation || requestedConversationId);
+  const conversation = useMemo(
+    () =>
+      resolvedConversation ??
+      ({
+        id: requestedConversationId ?? "",
+        status: "open",
+        unread_count: 0,
+      } as Conversation),
+    [resolvedConversation, requestedConversationId],
   );
+  const conversationId = hasSelection ? conversation.id : undefined;
+  const messagesLoaded = threadLoaded && !!resolvedConversation;
+  const updateCurrentMessage = useCallback(
+    (id: string, updates: Partial<Message>) => {
+      onUpdateMessage(id, updates, conversationId);
+    },
+    [onUpdateMessage, conversationId],
+  );
+  const {
+    syncing,
+    error: loadError,
+    retry,
+  } = useMessageSync(conversationId, messages, onMessagesLoaded, resyncToken);
   const { scrollRef, onScroll, followOwnSend } = useMessageScroll(
-    conversationId, messages, messagesLoaded,
+    conversationId,
+    messages,
+    messagesLoaded,
+    readingPositions,
   );
-  const handleOwnMessage = useCallback((message: Message) => {
-    followOwnSend();
-    onNewMessage(message);
-  }, [followOwnSend, onNewMessage]);
+  const handleOwnMessage = useCallback(
+    (message: Message) => {
+      followOwnSend();
+      onNewMessage(message);
+    },
+    [followOwnSend, onNewMessage],
+  );
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [reactions, setReactions] = useState<MessageReaction[]>([]);
+  const [reactionState, setReactionState] = useState<{
+    id?: string;
+    generation: number;
+    rows: MessageReaction[];
+  }>({ id: conversationId, generation: 0, rows: [] });
+  const reactions = reactionState.rows;
+  const reactionGeneration = reactionState.generation;
+  const setReactions = useCallback(
+    (
+      value:
+        MessageReaction[] | ((rows: MessageReaction[]) => MessageReaction[]),
+    ) => {
+      setReactionState((current) =>
+        current.id !== conversationId || current.generation !== reactionGeneration
+          ? current
+          : {
+              ...current,
+              rows: typeof value === "function" ? value(current.rows) : value,
+            },
+      );
+    },
+    [conversationId, reactionGeneration],
+  );
   const handleRefreshClick = useCallback(() => {
     if (syncing) return;
     if (onRefresh) onRefresh();
     else retry();
   }, [syncing, onRefresh, retry]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
+  const [localConversationId, setLocalConversationId] =
+    useState(conversationId);
+  if (localConversationId !== conversationId) {
+    setLocalConversationId(conversationId);
+    setReplyTo(null);
+    setTemplateModalOpen(false);
+    setReactionState((previous) => ({ id: conversationId, rows: [], generation: previous.generation + 1 }));
+  }
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -240,9 +326,13 @@ export function MessageThread({
       .reverse()
       .find((m) => m.sender_type === "customer");
 
-    if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
+    if (!lastCustomerMsg)
+      return { expired: true, remaining: "No customer messages" };
 
-    const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
+    const hoursSince = differenceInHours(
+      new Date(),
+      new Date(lastCustomerMsg.created_at),
+    );
     const expired = hoursSince >= 24;
 
     if (expired) {
@@ -288,7 +378,7 @@ export function MessageThread({
     return () => {
       cancelled = true;
     };
-  }, [conversationId, resyncToken]);
+  }, [conversationId, resyncToken, setReactions]);
 
   // Reactions realtime subscription per conversation. Subscribing here
   // (not at the page level) keeps the channel scoped to the visible
@@ -361,13 +451,7 @@ export function MessageThread({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [conversationId]);
-
-  // Clear any in-progress reply draft when the active conversation changes —
-  // a quote pulled from conversation A shouldn't bleed into conversation B.
-  useEffect(() => {
-    setReplyTo(null);
-  }, [conversationId]);
+  }, [conversationId, setReactions]);
 
   // Reset the server-side unread_count to 0 whenever an unread count
   // surfaces on the active conversation — covers both (a) opening a
@@ -392,9 +476,9 @@ export function MessageThread({
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
-      if (!conversation) return;
+      if (!hasSelection || !messagesLoaded) return;
 
-      const tempId = `temp-${Date.now()}`;
+      const tempId = `temp-${crypto.randomUUID()}`;
 
       // Optimistic update — shows the message immediately with "sending" status
       const optimisticMsg: Message = {
@@ -429,30 +513,39 @@ export function MessageThread({
           console.error("Failed to send message:", reason);
           toast.error(`Failed to send: ${reason}`);
           // Mark the optimistic bubble as failed so the user sees what happened
-          onUpdateMessage(tempId, { status: "failed" });
+          updateCurrentMessage(tempId, { status: "failed" });
           return;
         }
 
         // Success — the realtime INSERT event will replace the temp bubble
         // with the real DB row. If realtime hasn't arrived yet, at least
         // flip status to 'sent' so the UI stops showing "sending".
-        onUpdateMessage(tempId, {
+        updateCurrentMessage(tempId, {
           status: "sent",
-          id: typeof payload.message_id === "string" ? payload.message_id : tempId,
+          id:
+            typeof payload.message_id === "string"
+              ? payload.message_id
+              : tempId,
         });
       } catch (err) {
         console.error("Failed to send message:", err);
         const reason = err instanceof Error ? err.message : "network error";
         toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed" });
+        updateCurrentMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, handleOwnMessage, onUpdateMessage]
+    [
+      hasSelection,
+      messagesLoaded,
+      conversation,
+      handleOwnMessage,
+      updateCurrentMessage,
+    ],
   );
 
   const handleSendMedia = useCallback(
     async (payload: SendMediaPayload) => {
-      if (!conversation) return;
+      if (!hasSelection || !messagesLoaded) return;
 
       // Documents show their filename in our own bubble (and to the
       // recipient as the Meta caption when no caption was typed); other
@@ -462,7 +555,7 @@ export function MessageThread({
           ? payload.caption || payload.filename || "Document"
           : payload.caption;
 
-      const tempId = `temp-${Date.now()}`;
+      const tempId = `temp-${crypto.randomUUID()}`;
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
@@ -497,14 +590,16 @@ export function MessageThread({
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send media:", reason);
           toast.error(`Failed to send: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed" });
+          updateCurrentMessage(tempId, { status: "failed" });
           // The upload never reached the recipient — GC the orphaned
           // object rather than leaving it in the public bucket forever.
-          void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
+          void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(
+            () => {},
+          );
           return;
         }
 
-        onUpdateMessage(tempId, {
+        updateCurrentMessage(tempId, {
           status: "sent",
           id: typeof data.message_id === "string" ? data.message_id : tempId,
         });
@@ -512,18 +607,26 @@ export function MessageThread({
         console.error("Failed to send media:", err);
         const reason = err instanceof Error ? err.message : "network error";
         toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed" });
-        void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
+        updateCurrentMessage(tempId, { status: "failed" });
+        void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(
+          () => {},
+        );
       }
     },
-    [conversation, handleOwnMessage, onUpdateMessage],
+    [
+      hasSelection,
+      messagesLoaded,
+      conversation,
+      handleOwnMessage,
+      updateCurrentMessage,
+    ],
   );
 
   const handleSendInteractive = useCallback(
     async (payload: InteractiveMessagePayload, replyToId?: string) => {
-      if (!conversation) return;
+      if (!hasSelection || !messagesLoaded) return;
 
-      const tempId = `temp-${Date.now()}`;
+      const tempId = `temp-${crypto.randomUUID()}`;
       // Optimistic bubble — renders the buttons/list immediately via the
       // interactive_payload, same as the persisted row will.
       const optimisticMsg: Message = {
@@ -557,11 +660,11 @@ export function MessageThread({
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send interactive message:", reason);
           toast.error(`Failed to send: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed" });
+          updateCurrentMessage(tempId, { status: "failed" });
           return;
         }
 
-        onUpdateMessage(tempId, {
+        updateCurrentMessage(tempId, {
           status: "sent",
           id: typeof data.message_id === "string" ? data.message_id : tempId,
         });
@@ -569,15 +672,21 @@ export function MessageThread({
         console.error("Failed to send interactive message:", err);
         const reason = err instanceof Error ? err.message : "network error";
         toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed" });
+        updateCurrentMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, handleOwnMessage, onUpdateMessage],
+    [
+      hasSelection,
+      messagesLoaded,
+      conversation,
+      handleOwnMessage,
+      updateCurrentMessage,
+    ],
   );
 
   const handleStatusChange = useCallback(
     async (status: ConversationStatus) => {
-      if (!conversation) return;
+      if (!hasSelection || !messagesLoaded) return;
 
       const supabase = createClient();
       await supabase
@@ -587,12 +696,12 @@ export function MessageThread({
 
       onStatusChange(conversation.id, status);
     },
-    [conversation, onStatusChange]
+    [hasSelection, messagesLoaded, conversation, onStatusChange],
   );
 
   const handleOpenTemplates = useCallback(() => {
-    setTemplateModalOpen(true);
-  }, []);
+    if (messagesLoaded) setTemplateModalOpen(true);
+  }, [messagesLoaded]);
 
   const handleSendTemplate = useCallback(
     async (
@@ -603,10 +712,10 @@ export function MessageThread({
         buttonParams?: Record<number, string>;
       },
     ) => {
-      if (!conversation) return;
+      if (!hasSelection || !messagesLoaded) return;
 
       const renderedBody = renderTemplateBody(template.body_text, values.body);
-      const tempId = `temp-${Date.now()}`;
+      const tempId = `temp-${crypto.randomUUID()}`;
 
       const optimisticMsg: Message = {
         id: tempId,
@@ -649,22 +758,31 @@ export function MessageThread({
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send template:", reason);
           toast.error(`Failed to send template: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed" });
+          updateCurrentMessage(tempId, { status: "failed" });
           return;
         }
 
-        onUpdateMessage(tempId, {
+        updateCurrentMessage(tempId, {
           status: "sent",
-          id: typeof payload.message_id === "string" ? payload.message_id : tempId,
+          id:
+            typeof payload.message_id === "string"
+              ? payload.message_id
+              : tempId,
         });
       } catch (err) {
         console.error("Failed to send template:", err);
         const reason = err instanceof Error ? err.message : "network error";
         toast.error(`Failed to send template: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed" });
+        updateCurrentMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, handleOwnMessage, onUpdateMessage],
+    [
+      hasSelection,
+      messagesLoaded,
+      conversation,
+      handleOwnMessage,
+      updateCurrentMessage,
+    ],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -692,8 +810,7 @@ export function MessageThread({
   // contact name when the customer sent it.
   const authorLabelFor = useCallback(
     (m: Message): string => {
-      const isAgentMsg =
-        m.sender_type === "agent" || m.sender_type === "bot";
+      const isAgentMsg = m.sender_type === "agent" || m.sender_type === "bot";
       return isAgentMsg ? "You" : contactDisplayName;
     },
     [contactDisplayName],
@@ -744,7 +861,7 @@ export function MessageThread({
         return [
           ...prev,
           {
-            id: `temp-${Date.now()}`,
+            id: `temp-${crypto.randomUUID()}`,
             message_id: messageId,
             conversation_id: convId,
             actor_type: "agent",
@@ -771,12 +888,12 @@ export function MessageThread({
         setReactions(snapshot);
       }
     },
-    [conversation, user?.id],
+    [conversation, user?.id, setReactions],
   );
 
   const handleAssignChange = useCallback(
     async (agentId: string | null) => {
-      if (!conversation) return;
+      if (!hasSelection || !messagesLoaded) return;
 
       const supabase = createClient();
       const { error } = await supabase
@@ -792,32 +909,26 @@ export function MessageThread({
 
       onAssignChange(conversation.id, agentId);
     },
-    [conversation, onAssignChange],
+    [hasSelection, messagesLoaded, conversation, onAssignChange],
   );
 
-  // Empty state — same WhatsApp-style doodle background as the active
-  // thread below, so swapping between empty/selected doesn't change the
-  // pattern under the user's eye.
-  if (!conversation || !contact) {
-    return (
-      <div className={cn("flex flex-1 flex-col items-center justify-center", DOODLE_BG_CLASSES)}>
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-          <MessageSquare className="h-8 w-8 text-muted-foreground" />
-        </div>
-        <h3 className="mt-4 text-sm font-medium text-muted-foreground">
-          {t("selectConversation")}
-        </h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t("selectConversationHint")}
-        </p>
-      </div>
-    );
-  }
+  const emptyState = (
+    <div className="flex h-full flex-col items-center justify-center">
+      <MessageSquare className="h-8 w-8 text-muted-foreground" />
+      <h3 className="mt-4 text-sm font-medium text-muted-foreground">
+        {t("selectConversation")}
+      </h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {t("selectConversationHint")}
+      </p>
+    </div>
+  );
 
-  const displayName = contact.name || contact.phone;
+  const displayName =
+    contact?.name || contact?.phone || t("loadingConversation");
   const messageGroups = groupMessagesByDate(messages);
   const currentStatus = STATUS_OPTIONS.find(
-    (s) => s.value === conversation.status
+    (s) => s.value === conversation.status,
   );
   const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
@@ -837,182 +948,201 @@ export function MessageThread({
     <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          {/* Back-to-list button — mobile only. Hidden on lg+ where the
+      {hasSelection && (
+        <div className="border-border bg-card flex h-16 shrink-0 items-center justify-between gap-2 border-b px-3 py-3 sm:px-4">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              aria-label={t("backToConversations")}
-              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-          )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
-          </div>
-          {/* Session timer badge — hidden on the narrowest phones so
-              the name + back arrow keep their room. */}
-          <Badge
-            variant="outline"
-            className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
-              sessionInfo.expired ? "text-red-400" : "text-primary"
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                aria-label={t("backToConversations")}
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
             )}
-          >
-            <Clock className="h-3 w-3" />
-            {sessionInfo.remaining}
-          </Badge>
-        </div>
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+              {displayName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold text-foreground">
+                {displayName}
+              </h2>
+              <p className="truncate text-xs text-muted-foreground">
+                {contact?.phone ?? " "}
+              </p>
+            </div>
+            {/* Keep the contact name visible on phones and compact desktop
+                panels; the timer fits on tablets and wider desktops. */}
+            <Badge
+              variant="outline"
+              className={cn(
+                "border-border ml-1 hidden gap-1 text-[10px] sm:ml-2 sm:inline-flex lg:hidden 2xl:inline-flex",
+                sessionInfo.expired ? "text-red-400" : "text-primary",
+              )}
+            >
+              <Clock className="h-3 w-3" />
+              {sessionInfo.remaining}
+            </Badge>
+          </div>
 
-        <div className="flex items-center gap-2">
-          {/* Contact-panel toggle — desktop only. The contact sidebar
+          <div className="flex items-center gap-2">
+            {/* Contact-panel toggle — desktop only. The contact sidebar
               eats a chunk of horizontal width that crowds the thread on
               smaller laptops; this lets agents reclaim it when they just
               want to read and reply. Hidden on mobile, where the sidebar
               never renders as a permanent panel anyway. Issue #258. */}
-          {onToggleContactPanel && (
-            <button
-              type="button"
-              onClick={onToggleContactPanel}
-              aria-label={
-                contactPanelOpen ? t("hideContactPanel") : t("showContactPanel")
-              }
-              title={contactPanelOpen ? t("hideContact") : t("showContact")}
-              aria-pressed={contactPanelOpen}
-              className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
-                contactPanelOpen ? "text-primary" : "text-muted-foreground",
-              )}
-            >
-              {contactPanelOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
-            </button>
-          )}
+            {onToggleContactPanel && (
+              <button
+                type="button"
+                onClick={onToggleContactPanel}
+                aria-label={
+                  contactPanelOpen
+                    ? t("hideContactPanel")
+                    : t("showContactPanel")
+                }
+                title={contactPanelOpen ? t("hideContact") : t("showContact")}
+                aria-pressed={contactPanelOpen}
+                className={cn(
+                  "hover:bg-muted hover:text-foreground hidden h-7 w-7 items-center justify-center rounded-md transition-colors lg:inline-flex",
+                  contactPanelOpen ? "text-primary" : "text-muted-foreground",
+                )}
+              >
+                {contactPanelOpen ? (
+                  <PanelRightClose className="h-4 w-4" />
+                ) : (
+                  <PanelRightOpen className="h-4 w-4" />
+                )}
+              </button>
+            )}
 
-          {/* Manual refresh — forces a refetch of the messages + the
+            {/* Manual refresh — forces a refetch of the messages + the
               conversation list (the parent bumps its resyncToken). Useful
               when realtime missed an event or the agent just wants to be
               sure nothing's stale. Only rendered when the parent wires
               up `onRefresh`. */}
-          {onRefresh && (
-            <button
-              type="button"
-              onClick={handleRefreshClick}
-              disabled={syncing}
-              aria-label={t("refreshConversation")}
-              title={t("refresh")}
-              className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60",
-              )}
-            >
-              <RefreshCw
-                className={cn("h-3.5 w-3.5", syncing && "animate-spin")}
-              />
-            </button>
-          )}
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={handleRefreshClick}
+                disabled={syncing}
+                aria-label={t("refreshConversation")}
+                title={t("refresh")}
+                className={cn(
+                  "text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-60",
+                )}
+              >
+                <RefreshCw
+                  className={cn("h-3.5 w-3.5", syncing && "animate-spin")}
+                />
+              </button>
+            )}
 
-          {/* Status dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  currentStatus?.color ?? "text-muted-foreground"
-                )}>
-                {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
+            {/* Status dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={!messagesLoaded}
+                className={cn(
+                  "hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs",
+                  currentStatus?.color ?? "text-muted-foreground",
+                )}
+              >
+                {currentStatus
+                  ? t(`status${currentStatus.label}`)
+                  : t("status")}
                 <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => handleStatusChange(opt.value)}
-                  className={cn("text-sm", opt.color)}
-                >
-                  {t(`status${opt.label}`)}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Assign dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={cn(
-                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                assignedAgentId ? "text-primary" : "text-muted-foreground"
-              )}
-            >
-              <UserPlus className="h-3 w-3" />
-              <span className="hidden sm:inline">{assignLabel}</span>
-              <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {profiles.length === 0 ? (
-                <DropdownMenuItem disabled className="text-sm text-muted-foreground">
-                  {t("noTeammates")}
-                </DropdownMenuItem>
-              ) : (
-                profiles.map((p) => {
-                  const isSelected = p.user_id === assignedAgentId;
-                  const presence = getPresence(p.user_id);
-                  return (
-                    <DropdownMenuItem
-                      key={p.id}
-                      onClick={() => handleAssignChange(p.user_id)}
-                      className={cn(
-                        "text-sm",
-                        isSelected ? "text-primary" : "text-popover-foreground"
-                      )}
-                    >
-                      <PresenceDot
-                        status={presence}
-                        label={presenceLabel(
-                          presence,
-                          getRow(p.user_id)?.last_seen_at ?? null,
-                          now
-                        )}
-                        className="mr-2"
-                      />
-                      <span className="flex-1">
-                        {p.full_name}
-                        {p.user_id === user?.id ? t("me") : ""}
-                      </span>
-                      {isSelected && <Check className="ml-2 h-3 w-3" />}
-                    </DropdownMenuItem>
-                  );
-                })
-              )}
-              {assignedAgentId && (
-                <>
-                  <DropdownMenuSeparator className="bg-border" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="border-border bg-popover"
+              >
+                {STATUS_OPTIONS.map((opt) => (
                   <DropdownMenuItem
-                    onClick={() => handleAssignChange(null)}
+                    key={opt.value}
+                    onClick={() => handleStatusChange(opt.value)}
+                    className={cn("text-sm", opt.color)}
+                  >
+                    {t(`status${opt.label}`)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Assign dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={!messagesLoaded}
+                className={cn(
+                  "hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs",
+                  assignedAgentId ? "text-primary" : "text-muted-foreground",
+                )}
+              >
+                <UserPlus className="h-3 w-3" />
+                <span className="hidden sm:inline">{assignLabel}</span>
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="border-border bg-popover"
+              >
+                {profiles.length === 0 ? (
+                  <DropdownMenuItem
+                    disabled
                     className="text-sm text-muted-foreground"
                   >
-                    {t("unassign")}
+                    {t("noTeammates")}
                   </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                ) : (
+                  profiles.map((p) => {
+                    const isSelected = p.user_id === assignedAgentId;
+                    const presence = getPresence(p.user_id);
+                    return (
+                      <DropdownMenuItem
+                        key={p.id}
+                        onClick={() => handleAssignChange(p.user_id)}
+                        className={cn(
+                          "text-sm",
+                          isSelected
+                            ? "text-primary"
+                            : "text-popover-foreground",
+                        )}
+                      >
+                        <PresenceDot
+                          status={presence}
+                          label={presenceLabel(
+                            presence,
+                            getRow(p.user_id)?.last_seen_at ?? null,
+                            now,
+                          )}
+                          className="mr-2"
+                        />
+                        <span className="flex-1">
+                          {p.full_name}
+                          {p.user_id === user?.id ? t("me") : ""}
+                        </span>
+                        {isSelected && <Check className="ml-2 h-3 w-3" />}
+                      </DropdownMenuItem>
+                    );
+                  })
+                )}
+                {assignedAgentId && (
+                  <>
+                    <DropdownMenuSeparator className="bg-border" />
+                    <DropdownMenuItem
+                      onClick={() => handleAssignChange(null)}
+                      className="text-sm text-muted-foreground"
+                    >
+                      {t("unassign")}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Messages Area */}
       {/* `data-testid` because a conversation's last message renders in
@@ -1024,11 +1154,17 @@ export function MessageThread({
         onScroll={onScroll}
         style={{ overflowAnchor: "none" }}
         data-testid="message-thread"
+        data-conversation-id={conversationId ?? ""}
+        aria-busy={hasSelection && !messagesLoaded}
         className="flex-1 overflow-y-auto px-4 py-4"
       >
-        {!messagesLoaded && loadError ? (
+        {!hasSelection ? (
+          emptyState
+        ) : !messagesLoaded && (loadError || initialLookupError) ? (
           <div role="alert" className="flex flex-col items-center gap-3 py-12">
-            <p className="text-sm text-muted-foreground">{t("loadMessagesError")}</p>
+            <p className="text-sm text-muted-foreground">
+              {t("loadMessagesError")}
+            </p>
             <button
               type="button"
               onClick={handleRefreshClick}
@@ -1039,12 +1175,12 @@ export function MessageThread({
             </button>
           </div>
         ) : !messagesLoaded ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          </div>
+          <ThreadSkeleton />
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-sm text-muted-foreground">{t("noMessagesYet")}</p>
+            <p className="text-sm text-muted-foreground">
+              {t("noMessagesYet")}
+            </p>
             <p className="text-xs text-muted-foreground">
               {t("sendTemplateHint")}
             </p>
@@ -1068,8 +1204,9 @@ export function MessageThread({
                     const reply = parent
                       ? {
                           authorLabel:
-                            parent.sender_type === "agent" || parent.sender_type === "bot"
-                              ? t("me") 
+                            parent.sender_type === "agent" ||
+                            parent.sender_type === "bot"
+                              ? t("me")
                               : contact?.name || contact?.phone || "Unknown",
                           preview: buildReplyPreview(parent, tQuote),
                         }
@@ -1080,8 +1217,7 @@ export function MessageThread({
                     const handlePillToggle = (emoji: string) => {
                       const own = msgReactions?.find(
                         (r) =>
-                          r.actor_type === "agent" &&
-                          r.actor_id === user?.id,
+                          r.actor_type === "agent" && r.actor_id === user?.id,
                       );
                       const next = own?.emoji === emoji ? "" : emoji;
                       void postReaction(msg.id, next);
@@ -1115,30 +1251,39 @@ export function MessageThread({
       {/* AI auto-reply banner — take over an active bot, or resume it
           after a handoff. Renders nothing unless the account has
           auto-reply configured. */}
-      <AiThreadBanner
-        conversationId={conversation.id}
-        disabled={conversation.ai_autoreply_disabled ?? false}
-        handoffSummary={conversation.ai_handoff_summary}
-        assignedAgentId={assignedAgentId}
-        currentUserId={user?.id}
-        onChange={(patch) => {
-          if ("assigned_agent_id" in patch) {
-            onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
-          }
-        }}
-      />
+      {hasSelection && messagesLoaded && (
+        <AiThreadBanner
+          key={conversation.id}
+          conversationId={conversation.id}
+          disabled={conversation.ai_autoreply_disabled ?? false}
+          handoffSummary={conversation.ai_handoff_summary}
+          assignedAgentId={assignedAgentId}
+          currentUserId={user?.id}
+          onChange={(patch) => {
+            if ("assigned_agent_id" in patch) {
+              onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
+            }
+          }}
+        />
+      )}
 
       {/* Composer */}
-      <MessageComposer
-        conversationId={conversation.id}
-        sessionExpired={sessionInfo.expired}
-        onSend={handleSend}
-        onSendMedia={handleSendMedia}
-        onSendInteractive={handleSendInteractive}
-        onOpenTemplates={handleOpenTemplates}
-        replyTo={replyTo}
-        onClearReply={() => setReplyTo(null)}
-      />
+      {hasSelection && (
+        <MessageComposer
+          key={conversation.id}
+          loading={!messagesLoaded}
+          draftText={draft}
+          onDraftChange={onDraftChange}
+          conversationId={conversation.id}
+          sessionExpired={sessionInfo.expired}
+          onSend={handleSend}
+          onSendMedia={handleSendMedia}
+          onSendInteractive={handleSendInteractive}
+          onOpenTemplates={handleOpenTemplates}
+          replyTo={replyTo}
+          onClearReply={() => setReplyTo(null)}
+        />
+      )}
 
       <TemplatePicker
         open={templateModalOpen}
