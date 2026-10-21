@@ -98,8 +98,8 @@ test('long names/URLs keep indicators and composer inside actual app geometry', 
           'placeholder',
           /^(Escribe un mensaje|Type a message)\.\.\.$/
         );
-        await expect(page.getByText(/Toca ✨|Tap ✨/)).toBeHidden();
-      } else await expect(page.getByText(/Toca ✨|Tap ✨/)).toBeVisible();
+        await expect(page.getByText(/Toca ✨|Tap the ✨/)).toBeHidden();
+      } else await expect(page.getByText(/Toca ✨|Tap the ✨/)).toBeVisible();
       await input.fill('Texto de prueba');
       await more(page).click();
       const menu = page.getByRole('menu');
