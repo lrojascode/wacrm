@@ -291,6 +291,7 @@
       "readOnlyPlaceholder": "Solo lectura — los visores pueden navegar pero no responder",
       "sessionExpiredPlaceholder": "Sesión expirada - usa una plantilla",
       "typeMessagePlaceholder": "Escribe un mensaje... (Shift+Enter para nueva línea)",
+      "typeMessagePlaceholderMobile": "Escribe un mensaje...",
       "readOnlyTitle": "Solo lectura — tu rol no puede enviar mensajes",
       "recording": "Grabando… {current} / {max}",
       "cancel": "Cancelar",

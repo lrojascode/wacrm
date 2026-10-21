@@ -74,6 +74,13 @@ export const USERS: SeedUser[] = [
     account: "acme",
   },
   {
+    key: "acmeAgentTwo",
+    email: "e2e-acme-agent-two@local.test",
+    fullName: "Acme Agent Two",
+    role: "agent",
+    account: "acme",
+  },
+  {
     key: "acmeViewer",
     email: "e2e-acme-viewer@local.test",
     fullName: "Acme Viewer",

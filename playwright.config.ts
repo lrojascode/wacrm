@@ -1,27 +1,13 @@
+import { resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
-// ============================================================
-// E2E configuration.
-//
-// Port 3100 — the same one .claude/launch.json uses — and the suite
-// reuses a server that is already listening there.
-//
-// A dedicated port was the first instinct, but Next 16 refuses to run
-// a second dev server for the same directory: it detects the first and
-// exits 1. So a developer with `pnpm dev` already open could never run
-// the suite. Reuse is also honest here in a way it would not be for a
-// production build — a dev server always serves the current working
-// tree, so there is no "which build is this?" ambiguity to guard
-// against.
-//
-// The dev server, not a production build. These specs assert routing,
-// session handling and authorisation, all of which run identically in
-// dev, and rebuilding on every run would make the suite too slow to
-// use while fixing a bug. Anything that asserts production-only
-// behaviour — the Cache-Control rules in next.config.ts, for instance,
-// which Next overrides in dev — needs its own project against
-// `next start`.
-// ============================================================
+// E2E process only; never enable real external sends by forgetting a flag.
+process.env.E2E_PROVIDER_MOCKS ??= "1";
+
+// Next dev is the fast default; E2E_PROD=1 validates the production build.
+// Provider doubles must be installed before Node starts, so an uninstrumented
+// existing dev server cannot be reused. Stop it before starting this suite.
+// Port 3100 matches .claude/launch.json; all mutations target local Supabase.
 
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 
@@ -36,6 +22,11 @@ const PROD = process.env.E2E_PROD === "1";
 // same page over both hosts and checking for React's `__reactFiber$`
 // keys on document.body: present on localhost, absent on 127.0.0.1.
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${PORT}`;
+if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(BASE_URL).hostname)) {
+  throw new Error(
+    "E2E_BASE_URL must be loopback; this suite must never operate on production",
+  );
+}
 
 export default defineConfig({
   testDir: "./e2e",
@@ -76,7 +67,10 @@ export default defineConfig({
   projects: [
     {
       name: "desktop-chromium",
-      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } },
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+      },
     },
     {
       // The inbox collapses to a single pane on narrow viewports and
@@ -112,11 +106,19 @@ export default defineConfig({
     // Note this only applies to a server Playwright starts itself. With
     // `reuseExistingServer`, a dev server already running without the
     // flag is used as-is and the diagnostic spec will skip.
-    env: { NEXT_PUBLIC_AUTH_TRACE: "1" },
-    // Locally, reuse a server the developer already has running.
+    env: {
+      NEXT_PUBLIC_AUTH_TRACE: "1",
+      ...(process.env.E2E_PROVIDER_MOCKS === "1"
+        ? {
+            NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${resolve("e2e/support/provider-mocks.mjs")}`,
+          }
+        : {}),
+    },
+    // Reuse is allowed only when explicitly disabling the E2E transport.
     // Un servidor de dev que ya esté corriendo no sirve para la pasada
     // de producción: reutilizarlo mediría el artefacto equivocado.
-    reuseExistingServer: !process.env.CI && !PROD,
+    reuseExistingServer:
+      !process.env.CI && !PROD && process.env.E2E_PROVIDER_MOCKS !== "1",
     // A cold Next dev server compiles routes on demand; the first
     // navigation of a run is far slower than the rest.
     // Un build completo tarda más que arrancar `next dev` en frío.

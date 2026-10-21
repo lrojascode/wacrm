@@ -99,5 +99,34 @@ export function useMessageScroll(
       savedPositions?.current.set(conversationId, position.current);
   }, [conversationId, messages, loaded, savedPositions]);
 
+  // Banners, the composer, keyboard/viewport changes and media can resize
+  // after the initial scroll. Keep the end only if the reader was following;
+  // otherwise preserve the visible anchor, never pull them out of history.
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => {
+      const saved = position.current;
+      if (!saved) return;
+      if (saved.atBottom) element.scrollTop = element.scrollHeight;
+      else if (saved.anchorId && saved.anchorOffset !== undefined) {
+        const anchor = [
+          ...element.querySelectorAll<HTMLElement>('[data-message-id]'),
+        ].find((node) => node.dataset.messageId === saved.anchorId);
+        if (anchor)
+          element.scrollTop +=
+            anchor.getBoundingClientRect().top -
+            element.getBoundingClientRect().top -
+            saved.anchorOffset;
+      }
+      position.current = readPosition(element);
+      if (loaded && conversationId)
+        savedPositions?.current.set(conversationId, position.current);
+    });
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    return () => observer.disconnect();
+  }, [conversationId, loaded, messages, savedPositions]);
+
   return { scrollRef, onScroll, followOwnSend };
 }

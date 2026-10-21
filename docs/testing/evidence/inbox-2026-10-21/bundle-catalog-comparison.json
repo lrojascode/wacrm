@@ -1,0 +1,32 @@
+{
+  "columns": {
+    "before": 496,
+    "after": 496,
+    "equal": true
+  },
+  "policies": {
+    "before": 141,
+    "after": 141,
+    "equal": true
+  },
+  "triggers": {
+    "before": 23,
+    "after": 23,
+    "equal": true
+  },
+  "functions": {
+    "before": 154,
+    "after": 154,
+    "equal": true
+  },
+  "constraints": {
+    "before": 227,
+    "after": 227,
+    "equal": true
+  },
+  "indexes": {
+    "before": 157,
+    "after": 157,
+    "equal": true
+  }
+}

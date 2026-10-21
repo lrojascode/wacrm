@@ -2,7 +2,7 @@
   "name": "crm",
   "version": "0.8.0",
   "private": true,
-  "description": "Self-hostable CRM template for WhatsApp built on Next.js and Supabase — shared inbox, contacts, sales pipelines, broadcasts, and no-code automations.",
+  "description": "Self-hostable CRM template for WhatsApp built on Next.js and Supabase \u2014 shared inbox, contacts, sales pipelines, broadcasts, and no-code automations.",
   "license": "MIT",
   "author": "Arnas Donauskas",
   "homepage": "https://github.com/ArnasDon/wacrm",
@@ -41,7 +41,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
-    "audit:ci": "node scripts/security/audit.mjs"
+    "audit:ci": "node scripts/security/audit.mjs",
+    "supabase:start:inbox:test": "supabase start --exclude studio,postgres-meta,edge-runtime,logflare,vector,supavisor,imgproxy,mailpit"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -73,16 +74,19 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "jsdom": "^30.0.1",
+    "pg": "^8.23.1",
     "prettier": "^3.9.5",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "shadcn": "^4.21.3",
     "tailwindcss": "^4",
     "typescript": "^6",
+    "vite": "~8.1.6",
     "vitest": "^4.1.11"
   },
   "pnpm": {

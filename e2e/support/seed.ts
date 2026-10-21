@@ -64,11 +64,11 @@ function assertLocalTarget(url: string): void {
   const host = new URL(url).hostname;
   const isLocal =
     host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "host.docker.internal";
-  if (!isLocal && process.env.E2E_ALLOW_REMOTE !== "1") {
+  if (!isLocal) {
     throw new Error(
       `Refusing to seed a non-local Supabase (${host}). The E2E seed creates users ` +
-        `and overwrites rows by fixed id. Set E2E_ALLOW_REMOTE=1 only if you are ` +
-        `certain the target is disposable.`,
+        `and overwrites rows by fixed id. Remote overrides are disabled; the target must be ` +
+        `local.`,
     );
   }
 }

@@ -25,6 +25,7 @@ jobs:
     env:
       # Validate the artefact we deploy, including production CSP and caching.
       E2E_PROD: '1'
+      E2E_PROVIDER_MOCKS: '1'
       # Read at module load by lib/whatsapp/*. Must match vitest.config.ts
       # and ci.yml so behaviour is identical across the three runners.
       ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
@@ -67,11 +68,11 @@ jobs:
       # fails, the cause is almost always a migration that is not
       # idempotent — the same failure a customer would hit on a fresh
       # project, so it is worth surfacing loudly.
-      # The current suite uses text fixtures, Auth, REST and Realtime.
-      # Run the same reduced stack available locally; Studio, Storage,
+      # The inbox suite uses Auth, REST, Realtime and local Storage.
+      # Run the inbox stack available locally; Studio,
       # email capture, analytics and Edge Functions are not exercised.
       - name: Start Supabase (test services only)
-        run: pnpm run supabase:start:test
+        run: pnpm run supabase:start:inbox:test
 
       # `supabase status` prints the keys the stack generated. They are
       # deterministic for a local stack but reading them beats hardcoding,

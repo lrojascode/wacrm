@@ -13,6 +13,7 @@ import { usePresence } from "@/hooks/use-presence";
 import { useMessageSync } from "@/hooks/use-message-sync";
 import { ThreadSkeleton } from "./thread-skeleton";
 import type { ReadingPosition } from "@/hooks/use-message-scroll";
+import { usePresentedInboxMessages } from "@/hooks/use-presented-inbox-messages";
 import { useMessageScroll } from "@/hooks/use-message-scroll";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
@@ -247,6 +248,12 @@ export function MessageThread({
     messagesLoaded,
     readingPositions,
   );
+  usePresentedInboxMessages(
+    conversationId,
+    messages,
+    messagesLoaded,
+    scrollRef,
+  );
   const handleOwnMessage = useCallback(
     (message: Message) => {
       followOwnSend();
@@ -269,7 +276,8 @@ export function MessageThread({
         MessageReaction[] | ((rows: MessageReaction[]) => MessageReaction[]),
     ) => {
       setReactionState((current) =>
-        current.id !== conversationId || current.generation !== reactionGeneration
+        current.id !== conversationId ||
+        current.generation !== reactionGeneration
           ? current
           : {
               ...current,
@@ -291,7 +299,11 @@ export function MessageThread({
     setLocalConversationId(conversationId);
     setReplyTo(null);
     setTemplateModalOpen(false);
-    setReactionState((previous) => ({ id: conversationId, rows: [], generation: previous.generation + 1 }));
+    setReactionState((previous) => ({
+      id: conversationId,
+      rows: [],
+      generation: previous.generation + 1,
+    }));
   }
 
   // Profiles are bounded by RLS to rows the current user is allowed to
@@ -347,8 +359,6 @@ export function MessageThread({
 
     return { expired, remaining };
   }, [messages, tTimer]);
-
-  const hasUnread = (conversation?.unread_count ?? 0) > 0;
 
   // Reactions fetch — pulls the current state from the DB. Kept separate
   // from the channel subscription below so a `resyncToken` bump just
@@ -452,27 +462,6 @@ export function MessageThread({
       supabase.removeChannel(channel);
     };
   }, [conversationId, setReactions]);
-
-  // Reset the server-side unread_count to 0 whenever an unread count
-  // surfaces on the active conversation — covers both (a) opening a
-  // conversation that had unread messages and (b) new messages arriving
-  // while the user is already viewing the thread (webhook server-bumps
-  // unread_count to N+1; the realtime UPDATE propagates it into the
-  // client, which re-runs this effect and flips it back to 0).
-  //
-  // Guarding on hasUnread prevents the eq-update loop: once unread_count
-  // is 0 the condition is false, so no further UPDATE is issued.
-  useEffect(() => {
-    if (!conversationId || !hasUnread) return;
-    const supabase = createClient();
-    supabase
-      .from("conversations")
-      .update({ unread_count: 0 })
-      .eq("id", conversationId)
-      .then(({ error }) => {
-        if (error) console.error("Failed to reset unread_count:", error);
-      });
-  }, [conversationId, hasUnread]);
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
@@ -914,11 +903,11 @@ export function MessageThread({
 
   const emptyState = (
     <div className="flex h-full flex-col items-center justify-center">
-      <MessageSquare className="h-8 w-8 text-muted-foreground" />
-      <h3 className="mt-4 text-sm font-medium text-muted-foreground">
+      <MessageSquare className="text-muted-foreground h-8 w-8" />
+      <h3 className="text-muted-foreground mt-4 text-sm font-medium">
         {t("selectConversation")}
       </h3>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="text-muted-foreground mt-1 text-xs">
         {t("selectConversationHint")}
       </p>
     </div>
@@ -958,19 +947,19 @@ export function MessageThread({
                 type="button"
                 onClick={onBack}
                 aria-label={t("backToConversations")}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+                className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md lg:hidden"
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
             )}
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+            <div className="bg-muted text-foreground flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-medium">
               {displayName.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <h2 className="truncate text-sm font-semibold text-foreground">
+              <h2 className="text-foreground truncate text-sm font-semibold">
                 {displayName}
               </h2>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="text-muted-foreground truncate text-xs">
                 {contact?.phone ?? " "}
               </p>
             </div>
@@ -1006,7 +995,7 @@ export function MessageThread({
                 title={contactPanelOpen ? t("hideContact") : t("showContact")}
                 aria-pressed={contactPanelOpen}
                 className={cn(
-                  "hover:bg-muted hover:text-foreground hidden h-7 w-7 items-center justify-center rounded-md transition-colors lg:inline-flex",
+                  "hover:bg-muted hover:text-foreground hidden h-7 w-7 items-center justify-center rounded-md transition-colors xl:inline-flex",
                   contactPanelOpen ? "text-primary" : "text-muted-foreground",
                 )}
               >
@@ -1090,7 +1079,7 @@ export function MessageThread({
                 {profiles.length === 0 ? (
                   <DropdownMenuItem
                     disabled
-                    className="text-sm text-muted-foreground"
+                    className="text-muted-foreground text-sm"
                   >
                     {t("noTeammates")}
                   </DropdownMenuItem>
@@ -1132,7 +1121,7 @@ export function MessageThread({
                     <DropdownMenuSeparator className="bg-border" />
                     <DropdownMenuItem
                       onClick={() => handleAssignChange(null)}
-                      className="text-sm text-muted-foreground"
+                      className="text-muted-foreground text-sm"
                     >
                       {t("unassign")}
                     </DropdownMenuItem>
@@ -1162,14 +1151,14 @@ export function MessageThread({
           emptyState
         ) : !messagesLoaded && (loadError || initialLookupError) ? (
           <div role="alert" className="flex flex-col items-center gap-3 py-12">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               {t("loadMessagesError")}
             </p>
             <button
               type="button"
               onClick={handleRefreshClick}
               disabled={syncing}
-              className="text-sm text-primary hover:underline"
+              className="text-primary text-sm hover:underline"
             >
               {t("retryLoadMessages")}
             </button>
@@ -1178,10 +1167,10 @@ export function MessageThread({
           <ThreadSkeleton />
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               {t("noMessagesYet")}
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               {t("sendTemplateHint")}
             </p>
           </div>
@@ -1191,7 +1180,7 @@ export function MessageThread({
               <div key={format(new Date(group.date), "yyyy-MM-dd")}>
                 {/* Date separator */}
                 <div className="mb-4 flex items-center justify-center">
-                  <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium text-muted-foreground">
+                  <span className="bg-muted text-muted-foreground rounded-full px-3 py-1 text-[10px] font-medium">
                     {formatDateSeparator(group.date, t, dateLocale)}
                   </span>
                 </div>
@@ -1253,7 +1242,7 @@ export function MessageThread({
           auto-reply configured. */}
       {hasSelection && messagesLoaded && (
         <AiThreadBanner
-          key={conversation.id}
+          key={`ai:${conversation.id}`}
           conversationId={conversation.id}
           disabled={conversation.ai_autoreply_disabled ?? false}
           handoffSummary={conversation.ai_handoff_summary}
@@ -1270,7 +1259,7 @@ export function MessageThread({
       {/* Composer */}
       {hasSelection && (
         <MessageComposer
-          key={conversation.id}
+          key={`composer:${conversation.id}`}
           loading={!messagesLoaded}
           draftText={draft}
           onDraftChange={onDraftChange}

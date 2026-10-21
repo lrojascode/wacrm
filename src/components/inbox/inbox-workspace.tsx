@@ -12,8 +12,20 @@ import {
   looksLikeConversationId,
   resolveConversation,
 } from "@/lib/inbox/resolve-conversation";
+import {
+  mergeConversationSnapshot,
+  mergeUnreadState,
+  type UnreadState,
+} from "@/lib/inbox/unread";
+import {
+  INBOX_READ_EVENT,
+  INBOX_SNAPSHOT_EVENT,
+  subscribeInboxRecovery,
+  type InboxReadReceipt,
+} from "@/lib/inbox/read-queue";
 import { toast } from "sonner";
 import type { Conversation, Message, ConversationStatus } from "@/types";
+import { useInboxReadQueue } from "./inbox-read-provider";
 import { useRealtime } from "@/hooks/use-realtime";
 import { useInboxMessages } from "@/hooks/use-inbox-messages";
 import { ConversationList } from "@/components/inbox/conversation-list";
@@ -29,6 +41,7 @@ const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
 // Owned by the static /inbox layout, above the dynamic route identity.
 export function InboxWorkspace() {
   const t = useTranslations("Inbox.page");
+  const readQueue = useInboxReadQueue();
   const router = useRouter();
   const params = useParams<{ conversationId?: string[] }>();
   /**
@@ -67,10 +80,23 @@ export function InboxWorkspace() {
     onMessagesLoaded: handleMessagesLoaded,
     onNewMessage: handleNewMessage,
     onUpdateMessage: handleUpdateMessage,
+    onMessagesAcknowledged: handleMessagesAcknowledged,
     draft,
     onDraftChange,
     readingPositions,
   } = useInboxMessages(routeConvId);
+  const visibleHistory = useRef({
+    id: routeConvId,
+    messages,
+    loaded: messagesLoaded,
+  });
+  useEffect(() => {
+    visibleHistory.current = {
+      id: routeConvId,
+      messages,
+      loaded: messagesLoaded,
+    };
+  });
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null,
   );
@@ -261,10 +287,6 @@ export function InboxWorkspace() {
                     ...c,
                     last_message_text: newMsg.content_text ?? "",
                     last_message_at: newMsg.created_at,
-                    unread_count:
-                      activeConversation?.id === newMsg.conversation_id
-                        ? 0
-                        : c.unread_count + 1,
                   }
                 : c,
             ),
@@ -284,12 +306,7 @@ export function InboxWorkspace() {
         handleUpdateMessage(newMsg.id, newMsg);
       }
     },
-    [
-      activeConversation,
-      hydrateConversation,
-      handleNewMessage,
-      handleUpdateMessage,
-    ],
+    [hydrateConversation, handleNewMessage, handleUpdateMessage],
   );
 
   // A conversation is gone — either this tab deleted it, or realtime
@@ -343,21 +360,9 @@ export function InboxWorkspace() {
 
       if (event.eventType === "UPDATE") {
         if (knownConvIdsRef.current.has(conv.id)) {
-          // If this UPDATE is for the conv the user is currently viewing,
-          // suppress the incoming unread_count — the user is reading it
-          // RIGHT NOW, so any positive value would just flicker the badge
-          // back on for the ~100ms it takes for the reset effect's server
-          // UPDATE to round-trip. Non-active convs take the value as-is.
-          const isActive = activeConversation?.id === conv.id;
           setConversations((prev) =>
             prev.map((c) =>
-              c.id === conv.id
-                ? {
-                    ...c,
-                    ...conv,
-                    unread_count: isActive ? 0 : conv.unread_count,
-                  }
-                : c,
+              c.id === conv.id ? mergeUnreadState(c, { ...c, ...conv }) : c,
             ),
           );
         } else {
@@ -379,7 +384,7 @@ export function InboxWorkspace() {
         if (deletedId) handleConversationDeleted(deletedId);
       }
     },
-    [activeConversation, hydrateConversation, handleConversationDeleted],
+    [hydrateConversation, handleConversationDeleted],
   );
 
   // Subscribe to realtime. The `isConnected` flag below feeds the
@@ -392,30 +397,6 @@ export function InboxWorkspace() {
     onConversationEvent: handleConversationEvent,
     enabled: true,
   });
-
-  /**
-   * Bump `resyncToken` whenever the realtime channel transitions from
-   * disconnected → connected *after* the initial connect. The initial
-   * connect is covered by the children's on-mount fetches; only later
-   * reconnects need a manual refetch to fill the gap.
-   *
-   * Tracked via a `was-connected` ref rather than a count so that React
-   * strict-mode's dev-only effect double-fire doesn't read as a
-   * reconnect.
-   */
-  const wasConnectedRef = useRef(false);
-  const initialConnectDoneRef = useRef(false);
-  useEffect(() => {
-    if (isConnected && !wasConnectedRef.current) {
-      // false → true transition
-      if (initialConnectDoneRef.current) {
-        setResyncToken((n) => n + 1);
-      } else {
-        initialConnectDoneRef.current = true;
-      }
-    }
-    wasConnectedRef.current = isConnected;
-  }, [isConnected]);
 
   /**
    * Resolve a conversation id that is not in the loaded list.
@@ -492,7 +473,14 @@ export function InboxWorkspace() {
       cancelled = true;
       if (resolvedIdRef.current === routeConvId) resolvedIdRef.current = null;
     };
-  }, [routeConvId, conversationsLoaded, activeConversation?.id, router, t, resyncToken]);
+  }, [
+    routeConvId,
+    conversationsLoaded,
+    activeConversation?.id,
+    router,
+    t,
+    resyncToken,
+  ]);
 
   /**
    * Refetch when the tab regains focus. Background tabs may have their
@@ -500,15 +488,69 @@ export function InboxWorkspace() {
    * visibilitychange → visible is a reliable signal that we may have
    * missed events. Cheap to fire; the children dedupe on their own.
    */
+  useEffect(
+    () => subscribeInboxRecovery(() => setResyncToken((n) => n + 1)),
+    [],
+  );
+
   useEffect(() => {
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") {
-        setResyncToken((n) => n + 1);
-      }
+    const acknowledge = (event: Event) => {
+      const receipt = (event as CustomEvent<InboxReadReceipt>).detail;
+      setConversations((rows) =>
+        rows.map((row) =>
+          row.id === receipt.conversation_id
+            ? mergeUnreadState(row, {
+                ...row,
+                unread_count: receipt.unread_count,
+                unread_revision: receipt.unread_revision,
+              })
+            : row,
+        ),
+      );
+      handleMessagesAcknowledged(
+        receipt.conversation_id,
+        receipt.acknowledged_ids,
+      );
     };
-    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener(INBOX_READ_EVENT, acknowledge);
+    return () => window.removeEventListener(INBOX_READ_EVENT, acknowledge);
+  }, [handleMessagesAcknowledged]);
+
+  useEffect(() => {
+    let gapTimer: ReturnType<typeof setTimeout> | undefined;
+    const snapshot = (event: Event) => {
+      const rows = (event as CustomEvent<UnreadState[]>).detail;
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      setConversations((previous) =>
+        previous.map((row) => {
+          const incoming = byId.get(row.id);
+          return incoming
+            ? mergeUnreadState(row, { ...row, ...incoming })
+            : row;
+        }),
+      );
+      clearTimeout(gapTimer);
+      gapTimer = setTimeout(() => {
+        if (document.visibilityState !== "visible" || !navigator.onLine) return;
+        const history = visibleHistory.current;
+        const current = history.id ? byId.get(history.id) : undefined;
+        if (
+          history.loaded &&
+          history.messages
+            .filter((message) => message.sender_type === "customer")
+            .every((message) => typeof message.inbox_unread === "boolean") &&
+          current &&
+          current.unread_count >
+            history.messages.filter((message) => message.inbox_unread).length
+        ) {
+          setResyncToken((token) => token + 1);
+        }
+      }, 250);
+    };
+    window.addEventListener(INBOX_SNAPSHOT_EVENT, snapshot);
     return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
+      clearTimeout(gapTimer);
+      window.removeEventListener(INBOX_SNAPSHOT_EVENT, snapshot);
     };
   }, []);
 
@@ -520,17 +562,19 @@ export function InboxWorkspace() {
    */
   const handleManualRefresh = useCallback(() => {
     setLookupErrorId(null);
+    readQueue?.retry();
     setResyncToken((n) => n + 1);
-  }, []);
+  }, [readQueue]);
 
   const handleConversationsLoaded = useCallback(
-    (loaded: Conversation[]) => {
+    (loaded: Conversation[], baseline: Conversation[] = []) => {
       // Keep the selected row if a refreshed/filtered list omits it.
       setConversations((previous) => {
         const active = previous.find((row) => row.id === routeConvId);
-        return active && !loaded.some((row) => row.id === active.id)
-          ? [...loaded, active]
-          : loaded;
+        const merged = mergeConversationSnapshot(previous, loaded, baseline);
+        return active && !merged.some((row) => row.id === active.id)
+          ? [...merged, active]
+          : merged;
       });
       setConversationsLoaded(true);
       // No deep-link resolution here any more. The open conversation is
@@ -547,22 +591,6 @@ export function InboxWorkspace() {
       // Re-clicking the open conversation would push a duplicate history
       // entry, so Back would appear to do nothing once per extra click.
       if (routeConvId === conv.id) return;
-      // Optimistically clear the unread badge for this conv. The
-      // server-side reset is fired by the unread-reset effect inside
-      // MessageThread (which reads activeConversation.unread_count, not
-      // the list copy — so we deliberately leave that intact below to
-      // keep the effect firing), and the realtime UPDATE that comes
-      // back will sync to 0 again as a no-op. Zeroing the list copy
-      // here means the user sees the badge disappear the instant they
-      // click instead of waiting for the round-trip — and it persists
-      // even if the realtime UPDATE is dropped.
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === conv.id && c.unread_count > 0
-            ? { ...c, unread_count: 0 }
-            : c,
-        ),
-      );
       // `push`, not `replace` — this is the fix for defect C. Every
       // selection used to overwrite the same history entry, so after
       // opening a few conversations the stack still held only whatever
@@ -613,7 +641,10 @@ export function InboxWorkspace() {
   const hasActiveConv = !!routeConvId;
 
   return (
-    <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
+    <div
+      data-realtime-connected={isConnected}
+      className="-m-4 flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden sm:-m-6"
+    >
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
       {whatsappConnected === false && (
@@ -629,7 +660,7 @@ export function InboxWorkspace() {
             thread can occupy the full width. Always visible on lg+. */}
         <div
           className={cn(
-            "flex h-full flex-1 lg:flex-none",
+            "flex h-full min-w-0 flex-1 lg:flex-none",
             hasActiveConv ? "hidden lg:flex" : "flex",
           )}
         >
@@ -682,12 +713,10 @@ export function InboxWorkspace() {
           />
         </div>
 
-        {/* Right panel: Contact sidebar — desktop only, and only when the
-            agent hasn't collapsed it via the thread-header toggle (#258).
-            On mobile it's always hidden (the `lg:block` below), so the
-            toggle — which is itself desktop-only — never affects it. */}
+        {/* Three panels need xl width. At lg the contact panel would leave
+            only ~34px for typing; retain list + thread until xl. */}
         {contactPanelOpen && (
-          <div className="hidden lg:block">
+          <div className="hidden xl:block">
             <ContactSidebar
               contact={activeContact}
               conversationId={activeConversation?.id ?? null}

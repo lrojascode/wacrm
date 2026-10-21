@@ -249,12 +249,11 @@ export async function handleCallsWebhookChange(
           }
         } else {
           // 5c. Atomic update for conversation unread_count & last_message_text (neutral token)
-          const incrementUnread = outcome === 'missed'
           const { error: rpcErr } = await supabaseAdmin().rpc('update_conversation_last_message', {
             p_conversation_id: conversationId,
             p_last_message_text: lastMessageToken,
             p_last_message_at: new Date().toISOString(),
-            p_increment_unread: incrementUnread,
+            p_increment_unread: false, // message INSERT owns unread accounting
           })
 
           if (rpcErr) {

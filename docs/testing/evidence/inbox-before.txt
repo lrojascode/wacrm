@@ -1,0 +1,32 @@
+Baseline: 6549392, before production changes, 2026-10-21.
+Command: pnpm exec vitest run src/components/inbox/unread-investigation.test.tsx --reporter=verbose
+Only change for this run: replace the four it.fails with it.
+Result: 4 failed, 2 passed.
+
+FAIL  |dom| src/components/inbox/unread-investigation.test.tsx > opening from the list and replying should persist read state before returning to the list
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+
+FAIL  |dom| src/components/inbox/unread-investigation.test.tsx > an inbound message while reading should persist its acknowledgement
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'A', { unread_count: +0 } ]
+
+Number of calls: 0
+
+ ❯ src/components/inbox/unread-investigation.test.tsx:232:25
+
+FAIL  |dom| src/components/inbox/unread-investigation.test.tsx > an outgoing message in another conversation should not create unread messages
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "B: unread 0"
+
+Here are the accessible roles:
+
+  button:
+
+FAIL  |dom| src/components/inbox/unread-investigation.test.tsx > a failed read acknowledgement should be retried on resume even if unread remains positive
+AssertionError: expected "vi.fn()" to be called 2 times, but got 1 times
+ ❯ src/components/inbox/unread-investigation.test.tsx:285:25
+    283|     resume();
+    284|     await settle();
+    285|     expect(mocks.reset).toHaveBeenCalledTimes(2);

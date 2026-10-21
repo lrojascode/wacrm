@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
+import { InboxReadProvider } from "@/components/inbox/inbox-read-provider";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
@@ -86,10 +87,10 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   if (!hasAuthenticated) {
     if (loading) {
       return (
-        <div className="flex h-screen items-center justify-center bg-background">
+        <div className="bg-background flex h-screen items-center justify-center">
           <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <p className="text-sm text-muted-foreground">Loading...</p>
+            <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
+            <p className="text-muted-foreground text-sm">Loading...</p>
           </div>
         </div>
       );
@@ -117,7 +118,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   return (
     <CallProvider>
-      <div className="relative flex h-screen overflow-hidden bg-background">
+      <div className="bg-background relative flex h-screen overflow-hidden">
         {/* Reports this tab's online/away presence once we know a user is
             signed in. Headless — renders nothing. */}
         <PresenceHeartbeat />
@@ -139,11 +140,11 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
         {showSessionOverlay && (
           <div
             data-testid="session-overlay"
-            className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+            className="bg-background/80 absolute inset-0 z-50 flex items-center justify-center backdrop-blur-sm"
           >
             <div className="flex flex-col items-center gap-3">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <p className="text-sm text-muted-foreground">Loading...</p>
+              <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
+              <p className="text-muted-foreground text-sm">Loading...</p>
             </div>
           </div>
         )}
@@ -155,7 +156,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <DashboardShellInner>{children}</DashboardShellInner>
+      <InboxReadProvider>
+        <DashboardShellInner>{children}</DashboardShellInner>
+      </InboxReadProvider>
     </AuthProvider>
   );
 }

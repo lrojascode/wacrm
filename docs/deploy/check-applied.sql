@@ -47,6 +47,14 @@ GRANT SELECT, INSERT ON TABLE public.schema_release TO service_role;
 
 WITH checks AS (
   SELECT
+    '054 inbox read state' AS release,
+    to_regprocedure('public.acknowledge_inbox_messages(uuid,uuid[])') IS NOT NULL
+      AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='messages' AND column_name='inbox_unread')
+      AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='conversations' AND column_name='unread_revision')
+      AND (SELECT count(*) = 3 FROM pg_trigger WHERE NOT tgisinternal AND tgrelid='public.messages'::regclass AND tgname IN ('inbox_message_insert','inbox_message_update','inbox_message_delete')) AS ok,
+    'docs/deploy/inbox-read-state.sql' AS bundle
+  UNION ALL
+  SELECT
     -- The two de-dup indexes are what stop one customer from
     -- fragmenting into a wall of duplicate contacts and threads. They
     -- predate this file, so a production DB set up before it can be
