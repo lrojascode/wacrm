@@ -207,7 +207,7 @@ describe('call-webhook', () => {
       p_conversation_id: 'conv_123',
       p_last_message_text: '[call:missed]',
       p_last_message_at: expect.any(String),
-      p_increment_unread: true,
+      p_increment_unread: false, // message INSERT now owns the shared count
     })
   })
 })

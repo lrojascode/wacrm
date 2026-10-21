@@ -105,6 +105,28 @@ export function useInboxMessages(conversationId: string | null) {
     []
   );
 
+  const onMessagesAcknowledged = useCallback((id: string, ids: string[]) => {
+    setCache((current) => {
+      const thread = current.threads.get(id);
+      const read = new Set(ids);
+      if (
+        !thread ||
+        !thread.messages.some(
+          (message) => read.has(message.id) && message.inbox_unread
+        )
+      )
+        return current;
+      const threads = new Map(current.threads);
+      threads.set(id, {
+        ...thread,
+        messages: thread.messages.map((message) =>
+          read.has(message.id) ? { ...message, inbox_unread: false } : message
+        ),
+      });
+      return { ...current, threads };
+    });
+  }, []);
+
   const onDraftChange = useCallback(
     (draft: string) => {
       if (!conversationId) return;
@@ -135,6 +157,7 @@ export function useInboxMessages(conversationId: string | null) {
     onMessagesLoaded,
     onNewMessage,
     onUpdateMessage,
+    onMessagesAcknowledged,
     onDraftChange,
     readingPositions,
     retainReadingPositions,

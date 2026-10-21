@@ -49,14 +49,28 @@ export function useMessageSync(
           setStatus({ id: conversationId, syncing: true, error: false });
           const baseline = latest.current.messages;
           try {
-            const { data, error } = await supabase
-              .from('messages')
-              .select('*')
-              .eq('conversation_id', conversationId)
-              .abortSignal(abortController.signal)
-              .order('created_at', { ascending: true });
-            if (disposed) return;
-            if (error) throw error;
+            const data: Message[] = [];
+            let cursor: Message | undefined;
+            for (;;) {
+              let query = supabase
+                .from('messages')
+                .select('*')
+                .eq('conversation_id', conversationId)
+                .abortSignal(abortController.signal)
+                .order('created_at', { ascending: true })
+                .order('id', { ascending: true })
+                .limit(500);
+              if (cursor)
+                query = query.or(
+                  `created_at.gt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.gt.${cursor.id})`
+                );
+              const { data: page, error } = await query;
+              if (disposed) return;
+              if (error) throw error;
+              data.push(...(page ?? []));
+              if (!page || page.length < 500) break;
+              cursor = page[page.length - 1];
+            }
             latest.current.onLoaded(conversationId, data ?? [], baseline);
             // A queued query can start before React commits this result.
             // Give it the same baseline the parent is about to render.

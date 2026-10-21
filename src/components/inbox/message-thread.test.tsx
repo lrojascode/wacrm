@@ -38,14 +38,18 @@ vi.mock('@/lib/supabase/client', () => ({
         abortSignal: () => query,
         eq: (_key: string, value: string) => {
           id = value;
-          return table === 'message_reactions'
-            ? mocks.reactions(id)
-            : query;
+          return table === 'message_reactions' ? mocks.reactions(id) : query;
         },
-        order: () =>
-          table === 'messages'
-            ? mocks.query(id)
-            : Promise.resolve({ data: [], error: null }),
+        order: () => query,
+        limit: () => query,
+        or: () => query,
+        then: (
+          resolve: (value: unknown) => unknown,
+          reject: (error: unknown) => unknown
+        ) =>
+          Promise.resolve(
+            table === 'messages' ? mocks.query(id) : { data: [], error: null }
+          ).then(resolve, reject),
       };
       return query;
     },
@@ -57,8 +61,18 @@ vi.mock('@/lib/supabase/client', () => ({
   }),
 }));
 vi.mock('./message-bubble', () => ({
-  MessageBubble: ({ message, reactions }: { message: Message; reactions?: unknown[] }) => (
-    <p data-testid={message.id} data-status={message.status} data-reactions={reactions?.length ?? 0}>
+  MessageBubble: ({
+    message,
+    reactions,
+  }: {
+    message: Message;
+    reactions?: unknown[];
+  }) => (
+    <p
+      data-testid={message.id}
+      data-status={message.status}
+      data-reactions={reactions?.length ?? 0}
+    >
       {message.content_text}
     </p>
   ),
@@ -66,12 +80,18 @@ vi.mock('./message-bubble', () => ({
 vi.mock('./message-actions', () => ({
   MessageActions: ({
     children,
-    message, onReact,
+    message,
+    onReact,
   }: {
     onReact?: (emoji: string) => void;
     children: ReactNode;
     message: Message;
-  }) => <div data-message-id={message.id}>{children}<button onClick={() => onReact?.("👍")}>react {message.id}</button></div>,
+  }) => (
+    <div data-message-id={message.id}>
+      {children}
+      <button onClick={() => onReact?.('👍')}>react {message.id}</button>
+    </div>
+  ),
 }));
 vi.mock('./message-composer', () => ({
   MessageComposer: ({
@@ -287,7 +307,7 @@ describe('thread synchronization', () => {
       .mockReturnValueOnce(second.promise);
     for (let i = 0; i < 4; i++)
       fireEvent.click(screen.getByRole('button', { name: 'resync' }));
-    expect(mocks.query).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(mocks.query).toHaveBeenCalledTimes(2));
     await act(async () => first.resolve(result([row()])));
     expect(mocks.query).toHaveBeenCalledTimes(3);
     expect(
@@ -506,15 +526,70 @@ it('restores a visited chat and its reading position while revalidating its cach
 it('ignores a failed reaction rollback from an abandoned generation even after returning to the same chat', async () => {
   const view = await openThread();
   let reject!: (error: Error) => void;
-  vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise((_resolve, no) => { reject = no; })));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockReturnValue(
+      new Promise((_resolve, no) => {
+        reject = no;
+      })
+    )
+  );
   fireEvent.click(screen.getByRole('button', { name: 'react original' }));
   mocks.query.mockResolvedValueOnce(result([row('message B', 'B')]));
   view.rerender(<Harness id="B" />);
   await screen.findByTestId('message B');
-  mocks.reactions.mockResolvedValueOnce({ data: [{ id: 'fresh-reaction', message_id: 'original', conversation_id: 'A', actor_type: 'agent', actor_id: 'another', emoji: '👍' }], error: null });
+  mocks.reactions.mockResolvedValueOnce({
+    data: [
+      {
+        id: 'fresh-reaction',
+        message_id: 'original',
+        conversation_id: 'A',
+        actor_type: 'agent',
+        actor_id: 'another',
+        emoji: '👍',
+      },
+    ],
+    error: null,
+  });
   mocks.query.mockResolvedValueOnce(result([row()]));
   view.rerender(<Harness id="A" />);
-  await waitFor(() => expect(screen.getByTestId('original')).toHaveAttribute('data-reactions', '1'));
+  await waitFor(() =>
+    expect(screen.getByTestId('original')).toHaveAttribute(
+      'data-reactions',
+      '1'
+    )
+  );
   await act(async () => reject(new Error('late failure')));
   expect(screen.getByTestId('original')).toHaveAttribute('data-reactions', '1');
+});
+
+it('keeps the final position through a viewport resize but preserves older reading positions', async () => {
+  let resize = () => {};
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: () => void) {
+        resize = callback;
+      }
+      observe() {}
+      disconnect() {}
+    }
+  );
+  await openThread();
+  const thread = readingGeometry(700, 1000);
+  Object.defineProperty(thread, 'clientHeight', {
+    configurable: true,
+    value: 250,
+  });
+  act(resize);
+  // jsdom does not clamp scrollTop; the browser clamps this to 750.
+  expect(thread.scrollTop).toBe(1000);
+  thread.scrollTop = 200;
+  fireEvent.scroll(thread);
+  Object.defineProperty(thread, 'clientHeight', {
+    configurable: true,
+    value: 220,
+  });
+  act(resize);
+  expect(thread.scrollTop).toBe(200);
 });

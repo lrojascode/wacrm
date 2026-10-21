@@ -123,6 +123,10 @@ const SECURITY_HEADERS = [
 ] as const;
 
 const nextConfig: NextConfig = {
+  // The development toolbar otherwise covers the mobile composer during E2E.
+  ...(process.env.E2E_PROVIDER_MOCKS === "1"
+    ? { devIndicators: false as const }
+    : {}),
   /**
    * Cross-origin dev access (Next.js 16).
    *
@@ -237,7 +241,8 @@ const nextConfig: NextConfig = {
         // Cache-Control with "no-cache, must-revalidate" on every page
         // unconditionally (`if (this.dev)`), which hides this rule and
         // makes it look like it never applied.
-        source: "/:path((?!_next/|api/|login|signup|forgot-password|join/|l/).+)",
+        source:
+          "/:path((?!_next/|api/|login|signup|forgot-password|join/|l/).+)",
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {

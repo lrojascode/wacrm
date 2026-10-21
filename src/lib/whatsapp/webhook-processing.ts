@@ -752,6 +752,7 @@ async function processMessage(
   })
 
   if (msgError) {
+    if (msgError.code === '23505') return // duplicate delivery; do not dispatch automations twice
     console.error('Error inserting message:', msgError)
     return
   }
@@ -762,7 +763,6 @@ async function processMessage(
     .update({
       last_message_text: contentText || `[${message.type}]`,
       last_message_at: new Date().toISOString(),
-      unread_count: (conversation.unread_count || 0) + 1,
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversation.id)

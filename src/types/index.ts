@@ -177,6 +177,7 @@ export interface Conversation {
   last_message_text?: string;
   last_message_at?: string;
   unread_count: number;
+  unread_revision?: number;
   created_at: string;
   updated_at: string;
   contact?: Contact;
@@ -247,6 +248,8 @@ export type ContentType =
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Message {
+  /** Shared inbox receipt, independent of WhatsApp delivery/read status. */
+  inbox_unread?: boolean;
   id: string;
   conversation_id: string;
   sender_type: SenderType;

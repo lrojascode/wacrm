@@ -13,6 +13,13 @@ está en **[coolify.md](coolify.md)**: el orden de los bundles, las dos
 comprobaciones que el catálogo no puede hacer por ti, y los cambios de
 comportamiento que conviene avisar antes de desplegar.
 
+## Inbox: lectura compartida (054)
+
+El bundle incremental es `inbox-read-state.sql`. Preserva los contadores
+históricos válidos y añade reconocimientos por mensaje. No usar un reset ni
+poner los contadores en cero. El preflight, compatibilidad y verificaciones
+están en [inbox-unread-and-mobile.md](../testing/inbox-unread-and-mobile.md).
+
 ## Cuál usar
 
 | Situación | Archivo |
@@ -23,7 +30,7 @@ comportamiento que conviene avisar antes de desplegar.
 
 ### `full-install.sql` — instalación nueva
 
-Contiene las 51 migraciones (001 a 051) en orden, en un solo archivo. Es lo
+Contiene las 54 migraciones (001 a 054) en orden, en un solo archivo. Es lo
 que hay que correr cuando se levanta el CRM en una cuenta de Supabase nueva:
 otro cliente, otro entorno, una migración de proveedor.
 
@@ -94,14 +101,14 @@ Tras añadir una migración nueva, hay tres cosas que actualizar:
 
 ```bash
 # 1. El bundle de la release nueva
-TITLE="mi release" ./scripts/deploy/bundle-migrations.sh docs/deploy/mi-release.sql 051
+TITLE="mi release" ./scripts/deploy/bundle-migrations.sh docs/deploy/mi-release.sql 054
 
 # 2. El de instalación completa (hay que listar TODAS las migraciones)
 TITLE="full install (fresh deployment, all migrations)" \
   ./scripts/deploy/bundle-migrations.sh docs/deploy/full-install.sql \
   001 002 003 004 005 006 007 008 009 010 011 012 013 014 015 016 017 018 019 020 \
   021 022 023 024 025 026 027 028 029 030 031 032 033 034 035 036 037 038 039 040 \
-  041 042 043 044 045 046 047 048 049 050 051
+  041 042 043 044 045 046 047 048 049 050 051 052 053 054
 ```
 
 3. Añadir la fila correspondiente en `check-applied.sql`, detectando algo que

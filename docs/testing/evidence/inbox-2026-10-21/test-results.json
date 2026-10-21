@@ -1,0 +1,282 @@
+[
+  {
+    "file": "inbox-mobile.spec.ts",
+    "project": "desktop-chromium",
+    "title": "long names/URLs keep indicators and composer inside actual app geometry",
+    "status": "passed",
+    "durationMs": 8671
+  },
+  {
+    "file": "inbox-mobile.spec.ts",
+    "project": "desktop-chromium",
+    "title": "mobile menu executes AI, quick replies, interactive and text sends through real app routes",
+    "status": "passed",
+    "durationMs": 2563
+  },
+  {
+    "file": "inbox-mobile.spec.ts",
+    "project": "desktop-chromium",
+    "title": "expired WhatsApp window keeps templates reachable and free-form actions disabled",
+    "status": "passed",
+    "durationMs": 1111
+  },
+  {
+    "file": "inbox-mobile.spec.ts",
+    "project": "desktop-chromium",
+    "title": "mobile attachment chooser uploads to local Storage, cancels and sends",
+    "status": "passed",
+    "durationMs": 1368
+  },
+  {
+    "file": "inbox-mobile.spec.ts",
+    "project": "mobile-safari",
+    "title": "long names/URLs keep indicators and composer inside actual app geometry",
+    "status": "passed",
+    "durationMs": 9321
+  },
+  {
+    "file": "inbox-mobile.spec.ts",
+    "project": "mobile-safari",
+    "title": "mobile menu executes AI, quick replies, interactive and text sends through real app routes",
+    "status": "passed",
+    "durationMs": 2728
+  },
+  {
+    "file": "inbox-mobile.spec.ts",
+    "project": "mobile-safari",
+    "title": "expired WhatsApp window keeps templates reachable and free-form actions disabled",
+    "status": "passed",
+    "durationMs": 1285
+  },
+  {
+    "file": "inbox-mobile.spec.ts",
+    "project": "mobile-safari",
+    "title": "mobile attachment chooser uploads to local Storage, cancels and sends",
+    "status": "passed",
+    "durationMs": 1610
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "desktop-chromium",
+    "title": "legacy read-modify-write loses an increment on real Postgres",
+    "status": "passed",
+    "durationMs": 22
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "desktop-chromium",
+    "title": "parallel incoming messages count exactly; outgoing, duplicate and status events do not",
+    "status": "passed",
+    "durationMs": 117
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "desktop-chromium",
+    "title": "two agents acknowledge idempotently and preserve a concurrent backdated message",
+    "status": "passed",
+    "durationMs": 221
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "desktop-chromium",
+    "title": "viewer, anonymous and another tenant cannot acknowledge",
+    "status": "passed",
+    "durationMs": 187
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "desktop-chromium",
+    "title": "backfill preserves N, reapplication preserves acknowledgements, impossible counters abort",
+    "status": "passed",
+    "durationMs": 48
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "desktop-chromium",
+    "title": "contact merges carry per-message read state and preserve the aggregate",
+    "status": "passed",
+    "durationMs": 123
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "mobile-safari",
+    "title": "legacy read-modify-write loses an increment on real Postgres",
+    "status": "skipped",
+    "durationMs": 0
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "mobile-safari",
+    "title": "parallel incoming messages count exactly; outgoing, duplicate and status events do not",
+    "status": "skipped",
+    "durationMs": 0
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "mobile-safari",
+    "title": "two agents acknowledge idempotently and preserve a concurrent backdated message",
+    "status": "skipped",
+    "durationMs": 0
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "mobile-safari",
+    "title": "viewer, anonymous and another tenant cannot acknowledge",
+    "status": "skipped",
+    "durationMs": 0
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "mobile-safari",
+    "title": "backfill preserves N, reapplication preserves acknowledgements, impossible counters abort",
+    "status": "skipped",
+    "durationMs": 0
+  },
+  {
+    "file": "inbox-unread-db.spec.ts",
+    "project": "mobile-safari",
+    "title": "contact merges carry per-message read state and preserve the aggregate",
+    "status": "skipped",
+    "durationMs": 0
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "desktop-chromium",
+    "title": "persisted receipt converges in two sessions: acmeAgent",
+    "status": "passed",
+    "durationMs": 2548
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "desktop-chromium",
+    "title": "persisted receipt converges in two sessions: acmeAgentTwo",
+    "status": "passed",
+    "durationMs": 2718
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "desktop-chromium",
+    "title": "does not acknowledge before history is loaded (list)",
+    "status": "passed",
+    "durationMs": 1193
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "desktop-chromium",
+    "title": "does not acknowledge before history is loaded (URL)",
+    "status": "passed",
+    "durationMs": 1047
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "desktop-chromium",
+    "title": "hidden chats and old scroll positions retain new unread messages until presented",
+    "status": "passed",
+    "durationMs": 3032
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "desktop-chromium",
+    "title": "failed receipt survives list/reload/offline and only acknowledges previously presented IDs",
+    "status": "passed",
+    "durationMs": 1345
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "desktop-chromium",
+    "title": "viewer reads history without modifying shared unread state",
+    "status": "passed",
+    "durationMs": 947
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "desktop-chromium",
+    "title": "history beyond the REST row cap is loaded and acknowledged without omissions",
+    "status": "passed",
+    "durationMs": 1955
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "desktop-chromium",
+    "title": "automatic outgoing messages do not invent or clear badges in either agent session",
+    "status": "passed",
+    "durationMs": 16390
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "desktop-chromium",
+    "title": "an incoming message during a human response remains unread while the browser is hidden",
+    "status": "passed",
+    "durationMs": 1579
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "mobile-safari",
+    "title": "persisted receipt converges in two sessions: acmeAgent",
+    "status": "passed",
+    "durationMs": 3370
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "mobile-safari",
+    "title": "persisted receipt converges in two sessions: acmeAgentTwo",
+    "status": "passed",
+    "durationMs": 2842
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "mobile-safari",
+    "title": "does not acknowledge before history is loaded (list)",
+    "status": "passed",
+    "durationMs": 1330
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "mobile-safari",
+    "title": "does not acknowledge before history is loaded (URL)",
+    "status": "passed",
+    "durationMs": 1168
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "mobile-safari",
+    "title": "hidden chats and old scroll positions retain new unread messages until presented",
+    "status": "passed",
+    "durationMs": 2914
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "mobile-safari",
+    "title": "failed receipt survives list/reload/offline and only acknowledges previously presented IDs",
+    "status": "passed",
+    "durationMs": 1913
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "mobile-safari",
+    "title": "viewer reads history without modifying shared unread state",
+    "status": "passed",
+    "durationMs": 973
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "mobile-safari",
+    "title": "history beyond the REST row cap is loaded and acknowledged without omissions",
+    "status": "passed",
+    "durationMs": 2650
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "mobile-safari",
+    "title": "automatic outgoing messages do not invent or clear badges in either agent session",
+    "status": "passed",
+    "durationMs": 3347
+  },
+  {
+    "file": "inbox-unread.spec.ts",
+    "project": "mobile-safari",
+    "title": "an incoming message during a human response remains unread while the browser is hidden",
+    "status": "passed",
+    "durationMs": 2212
+  }
+]

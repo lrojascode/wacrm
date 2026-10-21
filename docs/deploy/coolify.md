@@ -14,6 +14,16 @@ probarlo.
 
 ---
 
+## Entrega Inbox 054
+
+Antes del redeploy aplicar únicamente `inbox-read-state.sql`, después del
+preflight y respaldo indicados en
+[la guía de validación](../testing/inbox-unread-and-mobile.md). La migración puede
+rechazar el corte si hay actividad o contadores históricos incoherentes; no
+forzarla borrando datos. Recargar sesiones antiguas después del deploy. El cierre
+requiere comparar PostgreSQL y ambas sesiones, más iPhone/Android físicos.
+No activar `E2E_PROVIDER_MOCKS` en Coolify ni ejecutar el seed allí.
+
 ## 0. Antes de nada: saber dónde estás
 
 En el editor SQL de cada proyecto de cliente:
@@ -46,7 +56,7 @@ local, no de producción; está explicado en [README.md](README.md#nota-sobre-su
 Un solo archivo, una sola vez:
 
 ```
-docs/deploy/full-install.sql          -- migraciones 001 → 052
+docs/deploy/full-install.sql          -- migraciones 001 → 054
 ```
 
 Pesa ~300 KB. Si el editor se atraganta o reporta un error de sintaxis que no

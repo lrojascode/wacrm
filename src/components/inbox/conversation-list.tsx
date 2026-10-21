@@ -52,7 +52,10 @@ interface ConversationListProps {
   activeConversationId: string | null;
   onSelect: (conversation: Conversation) => void;
   conversations: Conversation[];
-  onConversationsLoaded: (conversations: Conversation[]) => void;
+  onConversationsLoaded: (
+    conversations: Conversation[],
+    baseline?: Conversation[],
+  ) => void;
   /**
    * Increment to force the fetch effect below to refire. The parent
    * bumps this on realtime reconnect / tab visibility → visible so the
@@ -75,8 +78,6 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
   closed: "bg-muted-foreground",
 };
 
-
-
 type InboxFilter = ConversationStatus | "all" | "unread";
 
 export function ConversationList({
@@ -94,13 +95,16 @@ export function ConversationList({
   const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
-    { label: t("filterAll"), value: "all" },
-    { label: t("filterUnread"), value: "unread" },
-    { label: t("filterOpen"), value: "open" },
-    { label: t("filterPending"), value: "pending" },
-    { label: t("filterClosed"), value: "closed" },
-  ], [t]);
+  const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(
+    () => [
+      { label: t("filterAll"), value: "all" },
+      { label: t("filterUnread"), value: "unread" },
+      { label: t("filterOpen"), value: "open" },
+      { label: t("filterPending"), value: "pending" },
+      { label: t("filterClosed"), value: "closed" },
+    ],
+    [t],
+  );
 
   const { accountId } = useAuth();
 
@@ -164,6 +168,10 @@ export function ConversationList({
   // the fetch runs once on mount so it's fine to read the slightly
   // older value — the very next render updates the ref for any
   // subsequent async completion.
+  const snapshotRef = useRef(conversations);
+  useEffect(() => {
+    snapshotRef.current = conversations;
+  });
   const onConversationsLoadedRef = useRef(onConversationsLoaded);
   useEffect(() => {
     onConversationsLoadedRef.current = onConversationsLoaded;
@@ -174,6 +182,7 @@ export function ConversationList({
     let cancelled = false;
 
     (async () => {
+      const baseline = snapshotRef.current;
       const { data, error } = await supabase
         .from("conversations")
         .select(CONVERSATION_SELECT)
@@ -193,7 +202,10 @@ export function ConversationList({
         return;
       }
 
-      onConversationsLoadedRef.current(normalizeConversations(data ?? []));
+      onConversationsLoadedRef.current(
+        normalizeConversations(data ?? []),
+        baseline,
+      );
       setLoading(false);
     })();
 
@@ -252,7 +264,7 @@ export function ConversationList({
         matchesContactFilters(c, {
           tagIds: selectedTagIds,
           company: selectedCompany,
-        })
+        }),
       );
     }
 
@@ -271,7 +283,7 @@ export function ConversationList({
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
-      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id],
     );
   }, []);
 
@@ -280,20 +292,21 @@ export function ConversationList({
     setSelectedCompany(null);
   }, []);
 
-  const hasContactFilters = selectedTagIds.length > 0 || selectedCompany !== null;
+  const hasContactFilters =
+    selectedTagIds.length > 0 || selectedCompany !== null;
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
     },
-    []
+    [],
   );
 
   const handleSelect = useCallback(
     (conv: Conversation) => {
       onSelect(conv);
     },
-    [onSelect]
+    [onSelect],
   );
 
   const handleConfirmDelete = useCallback(async () => {
@@ -332,24 +345,24 @@ export function ConversationList({
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
-    <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
+    <div className="border-border bg-card flex h-full w-full min-w-0 flex-col border-r lg:w-80">
       {/* Search + Filter */}
-      <div className="space-y-2 border-b border-border p-3">
+      <div className="border-border space-y-2 border-b p-3">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             value={search}
             onChange={handleSearchChange}
             placeholder={t("searchPlaceholder")}
-            className="border-border bg-muted pl-9 text-sm text-foreground placeholder-muted-foreground focus:border-primary/50"
+            className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 pl-9 text-sm"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
           <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
-                {activeFilter?.label ?? t("filterAll")}
-                <ChevronDown className="h-3 w-3" />
+            <DropdownMenuTrigger className="text-muted-foreground hover:text-foreground hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs">
+              {activeFilter?.label ?? t("filterAll")}
+              <ChevronDown className="h-3 w-3" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="start"
@@ -363,7 +376,7 @@ export function ConversationList({
                     "text-sm",
                     filter === opt.value
                       ? "text-primary"
-                      : "text-popover-foreground"
+                      : "text-popover-foreground",
                   )}
                 >
                   {opt.label}
@@ -376,15 +389,15 @@ export function ConversationList({
             <DropdownMenu>
               <DropdownMenuTrigger
                 className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                  "hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs",
                   selectedTagIds.length > 0
                     ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {t("tags")}
                 {selectedTagIds.length > 0 && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                  <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
                     {selectedTagIds.length}
                   </span>
                 )}
@@ -392,14 +405,14 @@ export function ConversationList({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="max-h-64 w-56 border-border bg-popover"
+                className="border-border bg-popover max-h-64 w-56"
               >
                 {tags.map((t) => (
                   <DropdownMenuCheckboxItem
                     key={t.id}
                     checked={selectedTagIds.includes(t.id)}
                     onCheckedChange={() => toggleTag(t.id)}
-                    className="text-sm text-popover-foreground"
+                    className="text-popover-foreground text-sm"
                   >
                     <span className="flex items-center gap-2">
                       <span
@@ -418,18 +431,20 @@ export function ConversationList({
             <DropdownMenu>
               <DropdownMenuTrigger
                 className={cn(
-                  "inline-flex max-w-40 items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                  "hover:bg-muted inline-flex h-7 max-w-40 items-center justify-center gap-1 rounded-md px-2 text-xs",
                   selectedCompany
                     ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                <span className="truncate">{selectedCompany ?? t("company")}</span>
+                <span className="truncate">
+                  {selectedCompany ?? t("company")}
+                </span>
                 <ChevronDown className="h-3 w-3 shrink-0" />
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="max-h-64 w-56 border-border bg-popover"
+                className="border-border bg-popover max-h-64 w-56"
               >
                 <DropdownMenuItem
                   onClick={() => setSelectedCompany(null)}
@@ -437,7 +452,7 @@ export function ConversationList({
                     "text-sm",
                     selectedCompany === null
                       ? "text-primary"
-                      : "text-popover-foreground"
+                      : "text-popover-foreground",
                   )}
                 >
                   {t("allCompanies")}
@@ -450,7 +465,7 @@ export function ConversationList({
                       "text-sm",
                       selectedCompany === co
                         ? "text-primary"
-                        : "text-popover-foreground"
+                        : "text-popover-foreground",
                     )}
                   >
                     <span className="truncate">{co}</span>
@@ -469,13 +484,17 @@ export function ConversationList({
                 <button
                   key={id}
                   onClick={() => toggleTag(id)}
-                  className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
+                  className="bg-muted text-foreground hover:bg-muted/70 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]"
                 >
                   <span
                     className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: tag?.color ?? "var(--muted-foreground)" }}
+                    style={{
+                      backgroundColor: tag?.color ?? "var(--muted-foreground)",
+                    }}
                   />
-                  <span className="max-w-24 truncate">{tag?.name ?? t("tags")}</span>
+                  <span className="max-w-24 truncate">
+                    {tag?.name ?? t("tags")}
+                  </span>
                   <X className="h-3 w-3" />
                 </button>
               );
@@ -483,7 +502,7 @@ export function ConversationList({
             {selectedCompany && (
               <button
                 onClick={() => setSelectedCompany(null)}
-                className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
+                className="bg-muted text-foreground hover:bg-muted/70 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]"
               >
                 <span className="max-w-24 truncate">{selectedCompany}</span>
                 <X className="h-3 w-3" />
@@ -491,7 +510,7 @@ export function ConversationList({
             )}
             <button
               onClick={clearContactFilters}
-              className="px-1 text-[11px] text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground px-1 text-[11px]"
             >
               {t("clearAll")}
             </button>
@@ -508,11 +527,13 @@ export function ConversationList({
       <ScrollArea className="min-h-0 flex-1">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <p className="text-sm text-muted-foreground">{t("noConversations")}</p>
+            <p className="text-muted-foreground text-sm">
+              {t("noConversations")}
+            </p>
           </div>
         ) : (
           // See the note on `message-thread`: the list preview and the
@@ -611,7 +632,8 @@ function ConversationItem({
     const text = conversation.last_message_text;
     if (!text) return t("noMessagesYet");
     if (text.startsWith("[call")) {
-      const raw = text.startsWith("[") && text.endsWith("]") ? text.slice(1, -1) : text;
+      const raw =
+        text.startsWith("[") && text.endsWith("]") ? text.slice(1, -1) : text;
       const parts = raw.split(":");
       const outcome = parts[1];
       const durationSec = parts[2] ? parseInt(parts[2], 10) : 0;
@@ -633,69 +655,75 @@ function ConversationItem({
     // The row itself is a <button>, so the menu trigger can't be nested
     // inside it — it sits as an absolutely-positioned sibling instead.
     <div className="group/item relative">
-    <button
-      onClick={handleClick}
-      className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50",
-        isActive && "border-l-2 border-primary bg-muted/70",
-        // Room for the menu button so a long preview doesn't slide under it.
-        onRequestDelete && "pr-9"
-      )}
-    >
-      {/* Avatar */}
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-        {contact?.avatar_url ? (
-          <img
-            src={contact.avatar_url}
-            alt={displayName}
-            className="h-10 w-10 rounded-full object-cover"
-          />
-        ) : (
-          initials
+      <button
+        onClick={handleClick}
+        data-conversation-id={conversation.id}
+        className={cn(
+          "hover:bg-muted/50 flex w-full items-start gap-3 px-3 py-3 text-left transition-colors",
+          isActive && "border-primary bg-muted/70 border-l-2",
+          // Room for the menu button so a long preview doesn't slide under it.
+          onRequestDelete && "pr-9",
         )}
-      </div>
-
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {displayName}
-          </span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
-        </div>
-        <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground">
-            {lastMessagePreview}
-          </p>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {conversation.unread_count > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                {conversation.unread_count}
-              </span>
-            )}
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                STATUS_COLORS[conversation.status]
-              )}
-              title={conversation.status}
+      >
+        {/* Avatar */}
+        <div className="bg-muted text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-medium">
+          {contact?.avatar_url ? (
+            <img
+              src={contact.avatar_url}
+              alt={displayName}
+              className="h-10 w-10 rounded-full object-cover"
             />
+          ) : (
+            initials
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-foreground min-w-0 flex-1 truncate text-sm font-medium">
+              {displayName}
+            </span>
+            <span className="text-muted-foreground shrink-0 text-[10px]">
+              {timeAgo}
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <p className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+              {lastMessagePreview}
+            </p>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {conversation.unread_count > 0 && (
+                <span
+                  data-unread-count={conversation.unread_count}
+                  className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold"
+                >
+                  {conversation.unread_count}
+                </span>
+              )}
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  STATUS_COLORS[conversation.status],
+                )}
+                title={conversation.status}
+              />
+            </div>
           </div>
         </div>
-      </div>
-    </button>
+      </button>
 
       {onRequestDelete && (
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label={t("moreActions")}
             className={cn(
-              "absolute top-2 right-1.5 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-opacity",
+              "text-muted-foreground absolute top-2 right-1.5 flex h-6 w-6 items-center justify-center rounded-md transition-opacity",
               "hover:bg-muted hover:text-foreground",
               // Hidden until hover/keyboard focus, but always visible while
               // its own menu is open — otherwise the trigger vanishes the
               // moment focus moves into the popup.
-              "opacity-0 group-hover/item:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100"
+              "opacity-0 group-hover/item:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100",
             )}
           >
             <MoreVertical className="h-4 w-4" />

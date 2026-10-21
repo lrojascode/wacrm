@@ -9,7 +9,7 @@ Estas pruebas corren contra la aplicación real y una **pila local de Supabase**
 ## Ejecutar en local
 
 ```bash
-supabase start
+pnpm run supabase:start:inbox:test
 ```
 
 ```bash
@@ -75,7 +75,7 @@ También borra la cuenta que el trigger crea para los usuarios que no son `owner
 
 ### Barrera de seguridad
 
-El seed **se niega a correr contra un Supabase que no sea local**. Crea usuarios y sobrescribe filas por id fijo; apuntarlo a un proyecto compartido sería destructivo. Para saltarlo hace falta `E2E_ALLOW_REMOTE=1` explícito.
+El seed **se niega a correr contra un Supabase que no sea local**. Crea usuarios y sobrescribe filas por id fijo; apuntarlo a un proyecto compartido sería destructivo. No se permite saltar esta barrera con `E2E_ALLOW_REMOTE`.
 
 ---
 
@@ -125,3 +125,9 @@ Añadir más `data-testid` es aceptable cuando no hay un rol o texto accesible q
 `supabase start` aplica `supabase/migrations/*` y `supabase/seed.sql`. Si ese paso falla, la causa casi siempre es una migración que no es idempotente — el mismo fallo que encontraría un cliente en un proyecto nuevo, así que conviene que se vea.
 
 El informe HTML se sube siempre; trazas, capturas y vídeos solo cuando hay fallos.
+
+
+La validación de lectura y compositor, el transporte local de Meta/IA y la pasada
+en dispositivos están documentados en [inbox-unread-and-mobile.md](testing/inbox-unread-and-mobile.md).
+El runner habilita dobles de proveedor por defecto en su proceso y exige Storage
+local para las pruebas de adjuntos; no reutiliza un servidor iniciado sin esos dobles.

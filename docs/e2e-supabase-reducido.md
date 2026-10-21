@@ -46,7 +46,7 @@ si el límite está lleno, omitir servicios no basta por sí solo.
 
 ## GitHub Actions
 
-El workflow `.github/workflows/e2e.yml` ejecuta este mismo perfil y la suite
+El workflow `.github/workflows/e2e.yml` ejecuta el perfil de Inbox con Storage y la suite
 completa en Chromium de escritorio y WebKit con el dispositivo iPhone 13.
 La pasada de CI usa `E2E_PROD=1` para probar el build de producción; la ejecución
 local usa desarrollo por defecto, salvo que se configure esa variable.
@@ -58,3 +58,11 @@ No utiliza el disco de Docker de tu Mac.
 Para levantar todas las herramientas de desarrollo, usar `supabase start`.
 La exclusión de servicios está documentada en
 [Supabase CLI](https://supabase.com/docs/reference/cli/supabase-start).
+
+## Inbox con adjuntos
+
+La suite del compositor ahora incluye cargas reales a Storage. Para la suite
+completa usar `pnpm run supabase:start:inbox:test`, que conserva Storage y omite
+Studio, analítica, Edge Functions y correo. Si el perfil reducido estaba activo,
+ejecutar `supabase stop` sin `--no-backup` antes de cambiar de perfil.
+Ver [la validación del Inbox](testing/inbox-unread-and-mobile.md).
