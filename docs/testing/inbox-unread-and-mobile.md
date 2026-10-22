@@ -124,6 +124,22 @@ El informe HTML adjunta las mediciones JSON, estados persistidos y capturas de
 **WebKit con perfil iPhone no es un iPhone físico.** Reducir la altura tampoco
 reproduce el teclado, el selector nativo ni la suspensión del sistema operativo.
 
+### Ajuste de teclado móvil (2026-10-22)
+
+El inbox hereda la altura disponible del shell, sin márgenes negativos ni un
+segundo cálculo de `100dvh`. En móvil el shell sigue la altura y el desplazamiento
+de `VisualViewport`; los eventos se agrupan por frame y el zoom no cambia el
+layout. El viewport del dashboard solicita `interactive-widget=resizes-content`
+para Chromium. El historial puede reducirse, el compositor no se comprime y se
+conserva el seguimiento/ancla de scroll existente.
+
+Por solicitud del usuario, este ajuste se verifica sin ejecutar navegador:
+pruebas de código (incluidos teclado simulado mediante eventos, zoom y limpieza
+al navegar), TypeScript, lint y build. Estas comprobaciones **no validan un teclado
+real**. Tras el despliegue falta comprobar en Android Brave/Chrome y iPhone Safari
+la apertura/cierre del teclado, texto multilínea, menú «+», borradores y posición
+del historial, sin huecos ni desplazamiento del encabezado fuera de pantalla.
+
 ## Despliegue y verificaciones pendientes
 
 Aplicar únicamente el bundle incremental `docs/deploy/inbox-read-state.sql`

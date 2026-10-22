@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { InboxReadProvider } from "@/components/inbox/inbox-read-provider";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -12,6 +12,8 @@ import { CallProvider } from "@/components/calls/call-provider";
 import { useMfaGate } from "@/hooks/use-mfa-gate";
 import { recordAuthTrace } from "@/lib/diagnostics/auth-trace";
 import { buildLoginPath } from "@/lib/auth/next-path";
+import { useInboxViewport } from "@/hooks/use-inbox-viewport";
+import { cn } from "@/lib/utils";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
 // itself can stay a server component and export metadata (noindex) —
@@ -20,6 +22,8 @@ import { buildLoginPath } from "@/lib/auth/next-path";
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const isInbox = pathname === "/inbox" || pathname.startsWith("/inbox/");
 
   // Quien administra la cuenta y no tiene segundo factor va a /mfa
   // (P0-SEC-09). Redirect de conveniencia: el control real devuelve
@@ -56,6 +60,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   if (user && !hasAuthenticated) {
     setHasAuthenticated(true);
   }
+  const viewportRef = useInboxViewport(isInbox && hasAuthenticated);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -118,7 +123,15 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   return (
     <CallProvider>
-      <div className="bg-background relative flex h-screen overflow-hidden">
+      <div
+        ref={viewportRef}
+        className={cn(
+          "bg-background flex overflow-hidden",
+          isInbox
+            ? "fixed inset-x-0 top-[var(--inbox-viewport-top,0px)] h-[var(--inbox-viewport-height,100dvh)] lg:relative lg:top-auto lg:h-dvh"
+            : "relative h-screen",
+        )}
+      >
         {/* Reports this tab's online/away presence once we know a user is
             signed in. Headless — renders nothing. */}
         <PresenceHeartbeat />
@@ -126,10 +139,17 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             Headless — renders nothing. */}
         <AccountThemeSync />
         <Sidebar open={sidebarOpen} onClose={closeSidebar} />
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <Header onOpenSidebar={() => setSidebarOpen(true)} />
           {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
+          <main
+            className={cn(
+              "min-h-0 flex-1",
+              isInbox ? "overflow-hidden" : "overflow-y-auto p-4 sm:p-6",
+            )}
+          >
+            {children}
+          </main>
         </div>
 
         {/* Covers the app while the session is being re-established.

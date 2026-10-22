@@ -934,7 +934,7 @@ export function MessageThread({
     // clipped and the hover toolbar overlaps the Tags panel. Letting the
     // root shrink lets the bubbles' break-words / max-w caps apply.
     // Issue #257.
-    <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
+    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
       {hasSelection && (
@@ -1145,7 +1145,7 @@ export function MessageThread({
         data-testid="message-thread"
         data-conversation-id={conversationId ?? ""}
         aria-busy={hasSelection && !messagesLoaded}
-        className="flex-1 overflow-y-auto px-4 py-4"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
         {!hasSelection ? (
           emptyState

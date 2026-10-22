@@ -643,7 +643,7 @@ export function InboxWorkspace() {
   return (
     <div
       data-realtime-connected={isConnected}
-      className="-m-4 flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden sm:-m-6"
+      className="flex h-full min-h-0 flex-col overflow-hidden"
     >
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
@@ -654,7 +654,7 @@ export function InboxWorkspace() {
         </div>
       )}
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left panel: Conversation list.
             Hidden on mobile when a conversation is selected so the
             thread can occupy the full width. Always visible on lg+. */}

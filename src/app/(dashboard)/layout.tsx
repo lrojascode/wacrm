@@ -1,7 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DashboardShell } from "./dashboard-shell";
 import { buildBrandMetadata } from "@/lib/branding/brand";
 import { getBrand } from "@/lib/branding/server";
+
+// Chromium can resize the layout for the keyboard; VisualViewport handles
+// browsers that keep the layout viewport unchanged (including iOS Safari).
+export const viewport: Viewport = {
+  interactiveWidget: "resizes-content",
+};
 
 // Server layout that declares "do not index" metadata for the authed
 // app, and brands the browser tab for the signed-in account.
